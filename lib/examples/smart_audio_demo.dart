@@ -140,7 +140,8 @@ class _SmartAudioDemoState extends State<SmartAudioDemo> {
                 ValueListenableBuilder(
                   valueListenable: _audioHandler.playerState,
                   builder: (context, state, _) {
-                    final title = _audioHandler.currentTitle ?? 'No track loaded';
+                    final title =
+                        _audioHandler.currentTitle ?? 'No track loaded';
                     return Card(
                       color: GalaxyTheme.deepSpace.withOpacity(0.8),
                       child: Padding(
@@ -171,8 +172,8 @@ class _SmartAudioDemoState extends State<SmartAudioDemo> {
                               state == PlayerState.playing
                                   ? 'Playing'
                                   : state == PlayerState.paused
-                                      ? 'Paused'
-                                      : 'Stopped',
+                                  ? 'Paused'
+                                  : 'Stopped',
                               style: TextStyle(
                                 color: GalaxyTheme.moonGlow.withOpacity(0.7),
                                 fontSize: 14,
@@ -211,16 +212,20 @@ class _SmartAudioDemoState extends State<SmartAudioDemo> {
                                 onChanged: (value) {
                                   final newPosition = Duration(
                                     milliseconds:
-                                        (value * duration.inMilliseconds).toInt(),
+                                        (value * duration.inMilliseconds)
+                                            .toInt(),
                                   );
                                   _audioHandler.seek(newPosition);
                                 },
                               ),
                             ),
                             Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                              ),
                               child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
                                 children: [
                                   Text(
                                     _formatDuration(position),
@@ -329,7 +334,9 @@ class _SmartAudioDemoState extends State<SmartAudioDemo> {
 
                 // Play YouTube Button
                 ElevatedButton.icon(
-                  onPressed: _audioHandler.isLoading.value ? null : _playYouTubeLink,
+                  onPressed: _audioHandler.isLoading.value
+                      ? null
+                      : _playYouTubeLink,
                   icon: const Icon(Icons.play_circle_outline),
                   label: const Text('Play YouTube Link'),
                   style: ElevatedButton.styleFrom(

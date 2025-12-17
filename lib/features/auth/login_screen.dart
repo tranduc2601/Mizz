@@ -230,7 +230,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   shadowColor: Colors.transparent,
                                 ).copyWith(
                                   backgroundColor:
-                                      MaterialStateProperty.resolveWith((
+                                      WidgetStateProperty.resolveWith((
                                         states,
                                       ) {
                                         return Colors.transparent;

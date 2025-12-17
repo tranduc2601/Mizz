@@ -23,6 +23,9 @@ class MusicPlayerService extends ChangeNotifier {
   LoopMode _loopMode = LoopMode.none;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
+  double _volume = 1.0;
+  double _playbackSpeed = 1.0;
+  bool _autoNext = true; // Auto-play next song when current ends
 
   MusicPlayerService() {
     // just_audio listeners
@@ -68,14 +71,14 @@ class MusicPlayerService extends ChangeNotifier {
         notifyListeners();
       }
     });
-    
+
     // Handle song completion for loop
     _audioPlayer.playerStateStream.listen((state) {
       if (state.processingState == ProcessingState.completed) {
         _handleSongComplete();
       }
     });
-    
+
     _fallbackPlayer.onPlayerComplete.listen((_) {
       _handleSongComplete();
     });
@@ -87,10 +90,18 @@ class MusicPlayerService extends ChangeNotifier {
   LoopMode get loopMode => _loopMode;
   Duration get position => _position;
   Duration get duration => _duration;
-  double get progress => _duration.inMilliseconds > 0
-      ? _position.inMilliseconds / _duration.inMilliseconds
-      : 0.0;
-  
+  double get volume => _volume;
+  double get playbackSpeed => _playbackSpeed;
+  bool get autoNext => _autoNext;
+  double get progress {
+    if (_duration.inMilliseconds <= 0) return 0.0;
+    // Clamp progress between 0.0 and 1.0 to avoid slider overflow error
+    return (_position.inMilliseconds / _duration.inMilliseconds).clamp(
+      0.0,
+      1.0,
+    );
+  }
+
   /// Toggle loop mode: none -> one -> all -> none
   void toggleLoopMode() {
     switch (_loopMode) {
@@ -112,14 +123,45 @@ class MusicPlayerService extends ChangeNotifier {
     }
     notifyListeners();
   }
-  
+
   void _handleSongComplete() {
     // LoopMode.one is handled by the player itself
-    // LoopMode.all will be handled by the UI (play next song)
+    // For other modes, notify the UI to handle auto-next
+    if (_loopMode != LoopMode.one && _autoNext) {
+      onSongComplete?.call(_currentSongId ?? '');
+    }
   }
 
-  // Callback for when song completes (for loop all mode)
+  // Callback for when song completes (for auto-next and loop all mode)
   Function(String songId)? onSongComplete;
+
+  /// Toggle auto-next mode
+  void toggleAutoNext() {
+    _autoNext = !_autoNext;
+    notifyListeners();
+  }
+
+  /// Set volume (0.0 to 1.0)
+  Future<void> setVolume(double volume) async {
+    _volume = volume.clamp(0.0, 1.0);
+    if (_usingFallback) {
+      await _fallbackPlayer.setVolume(_volume);
+    } else {
+      await _audioPlayer.setVolume(_volume);
+    }
+    notifyListeners();
+  }
+
+  /// Set playback speed (0.25 to 2.0)
+  Future<void> setPlaybackSpeed(double speed) async {
+    _playbackSpeed = speed.clamp(0.25, 2.0);
+    if (_usingFallback) {
+      await _fallbackPlayer.setPlaybackRate(_playbackSpeed);
+    } else {
+      await _audioPlayer.setSpeed(_playbackSpeed);
+    }
+    notifyListeners();
+  }
 
   Future<void> playSong(String songId, String musicSource) async {
     try {
@@ -228,6 +270,8 @@ class MusicPlayerService extends ChangeNotifier {
     try {
       debugPrint('▶️ Trying just_audio...');
       await _audioPlayer.setFilePath(downloadedFile.path);
+      await _audioPlayer.setVolume(_volume);
+      await _audioPlayer.setSpeed(_playbackSpeed);
       await _audioPlayer.play();
       debugPrint('✅ Playing with just_audio');
     } catch (e) {
@@ -236,6 +280,8 @@ class MusicPlayerService extends ChangeNotifier {
 
       // Fallback to audioplayers
       _usingFallback = true;
+      await _fallbackPlayer.setVolume(_volume);
+      await _fallbackPlayer.setPlaybackRate(_playbackSpeed);
       await _fallbackPlayer.play(ap.DeviceFileSource(downloadedFile.path));
       debugPrint('✅ Playing with audioplayers');
     }

@@ -498,7 +498,7 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
     final seconds = (progress * 300).toInt(); // Assuming 5 min max
     final minutes = seconds ~/ 60;
     final remainingSeconds = seconds % 60;
-    return '${minutes}:${remainingSeconds.toString().padLeft(2, '0')}';
+    return '$minutes:${remainingSeconds.toString().padLeft(2, '0')}';
   }
 
   /// Build placeholder image with song title text

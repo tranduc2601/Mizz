@@ -27,6 +27,67 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
     _playerService.addListener(() {
       if (mounted) setState(() {});
     });
+
+    // Set up auto-next callback
+    _playerService.onSongComplete = (songId) {
+      _playNextSong();
+    };
+  }
+
+  /// Play the next song automatically
+  void _playNextSong() {
+    final musicService = MusicServiceProvider.of(context);
+    final musicItems = musicService.musicItems;
+
+    if (musicItems.isEmpty) return;
+
+    int nextIndex;
+    if (_playerService.loopMode == LoopMode.all) {
+      // Loop all: go to first song if at end
+      nextIndex = (_currentIndex + 1) % musicItems.length;
+    } else {
+      // Normal: go to next song if available
+      nextIndex = _currentIndex + 1;
+      if (nextIndex >= musicItems.length) return; // No more songs
+    }
+
+    setState(() {
+      _currentIndex = nextIndex;
+    });
+
+    _pageController.animateToPage(
+      nextIndex,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+
+    // Auto-play the next song
+    final nextSong = musicItems[nextIndex];
+    _playerService.playSong(nextSong.id, nextSong.musicSource);
+  }
+
+  /// Play the previous song
+  void _playPreviousSong() {
+    final musicService = MusicServiceProvider.of(context);
+    final musicItems = musicService.musicItems;
+
+    if (musicItems.isEmpty || _currentIndex <= 0) return;
+
+    final prevIndex = _currentIndex - 1;
+
+    setState(() {
+      _currentIndex = prevIndex;
+    });
+
+    _pageController.animateToPage(
+      prevIndex,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+
+    // Auto-play the previous song
+    final prevSong = musicItems[prevIndex];
+    _playerService.playSong(prevSong.id, prevSong.musicSource);
   }
 
   @override
@@ -156,7 +217,18 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
               ),
             ),
 
-            const SizedBox(height: 30),
+            const SizedBox(height: 20),
+
+            // Playback Speed Button (above progress bar, right side)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 40),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [_buildSpeedButton()],
+              ),
+            ),
+
+            const SizedBox(height: 8),
 
             // Progress Bar
             Padding(
@@ -215,16 +287,16 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                // Auto-Next Button (left of previous)
+                _buildAutoNextButton(),
+
+                const SizedBox(width: 12),
+
                 // Previous Button
                 _buildControlButton(
                   icon: Icons.skip_previous,
                   onPressed: _currentIndex > 0
-                      ? () {
-                          _pageController.previousPage(
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeInOut,
-                          );
-                        }
+                      ? () => _playPreviousSong()
                       : null,
                 ),
 
@@ -290,12 +362,7 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
                 _buildControlButton(
                   icon: Icons.skip_next,
                   onPressed: _currentIndex < musicItems.length - 1
-                      ? () {
-                          _pageController.nextPage(
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeInOut,
-                          );
-                        }
+                      ? () => _playNextSong()
                       : null,
                 ),
 
@@ -305,16 +372,177 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
                 _buildLoopButton(),
               ],
             ),
+
+            const SizedBox(height: 20),
+
+            // Volume Slider
+            _buildVolumeSlider(),
           ],
         );
       },
     );
   }
 
+  /// Build Auto-Next Button
+  Widget _buildAutoNextButton() {
+    final isActive = _playerService.autoNext;
+
+    return GestureDetector(
+      onTap: () {
+        _playerService.toggleAutoNext();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _playerService.autoNext
+                  ? 'Auto-play next: ON'
+                  : 'Auto-play next: OFF',
+            ),
+            duration: const Duration(seconds: 1),
+            backgroundColor: _playerService.autoNext
+                ? GalaxyTheme.auroraGreen
+                : GalaxyTheme.moonGlow.withOpacity(0.7),
+          ),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: isActive
+                ? GalaxyTheme.auroraGreen
+                : GalaxyTheme.moonGlow.withOpacity(0.5),
+            width: 1,
+          ),
+        ),
+        child: Icon(
+          Icons.playlist_play,
+          color: isActive
+              ? GalaxyTheme.auroraGreen
+              : GalaxyTheme.moonGlow.withOpacity(0.5),
+          size: 20,
+        ),
+      ),
+    );
+  }
+
+  /// Build Volume Slider
+  Widget _buildVolumeSlider() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 40),
+      child: Row(
+        children: [
+          Icon(
+            _playerService.volume == 0
+                ? Icons.volume_off
+                : _playerService.volume < 0.5
+                ? Icons.volume_down
+                : Icons.volume_up,
+            color: GalaxyTheme.moonGlow.withOpacity(0.7),
+            size: 20,
+          ),
+          Expanded(
+            child: SliderTheme(
+              data: SliderThemeData(
+                trackHeight: 3,
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+              ),
+              child: Slider(
+                value: _playerService.volume,
+                onChanged: (value) {
+                  _playerService.setVolume(value);
+                },
+                activeColor: GalaxyTheme.auroraGreen,
+                inactiveColor: GalaxyTheme.moonGlow.withOpacity(0.2),
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 35,
+            child: Text(
+              '${(_playerService.volume * 100).toInt()}%',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: GalaxyTheme.moonGlow.withOpacity(0.6),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Build Speed Button with popup menu
+  Widget _buildSpeedButton() {
+    final speeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+
+    return PopupMenuButton<double>(
+      onSelected: (speed) {
+        _playerService.setPlaybackSpeed(speed);
+      },
+      color: GalaxyTheme.deepSpace.withOpacity(0.95),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: GalaxyTheme.moonGlow.withOpacity(0.3)),
+      ),
+      itemBuilder: (context) => speeds.map((speed) {
+        final isSelected = _playerService.playbackSpeed == speed;
+        return PopupMenuItem<double>(
+          value: speed,
+          child: Row(
+            children: [
+              if (isSelected)
+                Icon(Icons.check, color: GalaxyTheme.cyberpunkCyan, size: 18)
+              else
+                const SizedBox(width: 18),
+              const SizedBox(width: 8),
+              Text(
+                '${speed}x',
+                style: TextStyle(
+                  color: isSelected
+                      ? GalaxyTheme.cyberpunkCyan
+                      : GalaxyTheme.moonGlow,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: GalaxyTheme.moonGlow.withOpacity(0.3),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.speed,
+              color: GalaxyTheme.moonGlow.withOpacity(0.7),
+              size: 16,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              '${_playerService.playbackSpeed}x',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: GalaxyTheme.moonGlow.withOpacity(0.7),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildLoopButton() {
     IconData icon;
     Color color;
-    
+
     switch (_playerService.loopMode) {
       case LoopMode.none:
         icon = Icons.repeat;
@@ -329,7 +557,7 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
         color = GalaxyTheme.cyberpunkPink;
         break;
     }
-    
+
     return GestureDetector(
       onTap: () {
         _playerService.toggleLoopMode();
@@ -338,16 +566,9 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          border: Border.all(
-            color: color.withOpacity(0.5),
-            width: 1,
-          ),
+          border: Border.all(color: color.withOpacity(0.5), width: 1),
         ),
-        child: Icon(
-          icon,
-          color: color,
-          size: 20,
-        ),
+        child: Icon(icon, color: color, size: 20),
       ),
     );
   }
@@ -583,11 +804,17 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
               ),
               title: ShaderMask(
                 shaderCallback: (bounds) => const LinearGradient(
-                  colors: [GalaxyTheme.cyberpunkPink, GalaxyTheme.cyberpunkCyan],
+                  colors: [
+                    GalaxyTheme.cyberpunkPink,
+                    GalaxyTheme.cyberpunkCyan,
+                  ],
                 ).createShader(bounds),
                 child: const Text(
                   'Edit Song',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
               content: SingleChildScrollView(
@@ -598,7 +825,9 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
                     GestureDetector(
                       onTap: () async {
                         final picker = ImagePicker();
-                        final image = await picker.pickImage(source: ImageSource.gallery);
+                        final image = await picker.pickImage(
+                          source: ImageSource.gallery,
+                        );
                         if (image != null) {
                           setState(() {
                             newImagePath = image.path;
@@ -620,17 +849,20 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
                           child: Stack(
                             fit: StackFit.expand,
                             children: [
-                              if (newImagePath != null && newImagePath!.isNotEmpty)
+                              if (newImagePath != null &&
+                                  newImagePath!.isNotEmpty)
                                 newImagePath!.startsWith('http')
                                     ? Image.network(
                                         newImagePath!,
                                         fit: BoxFit.cover,
-                                        errorBuilder: (_, __, ___) => _buildPlaceholderImage(item.title),
+                                        errorBuilder: (_, __, ___) =>
+                                            _buildPlaceholderImage(item.title),
                                       )
                                     : Image.file(
                                         File(newImagePath!),
                                         fit: BoxFit.cover,
-                                        errorBuilder: (_, __, ___) => _buildPlaceholderImage(item.title),
+                                        errorBuilder: (_, __, ___) =>
+                                            _buildPlaceholderImage(item.title),
                                       )
                               else
                                 _buildPlaceholderImage(item.title),
@@ -664,16 +896,25 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
                       style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
                         labelText: 'Song Name',
-                        labelStyle: TextStyle(color: GalaxyTheme.moonGlow.withOpacity(0.7)),
+                        labelStyle: TextStyle(
+                          color: GalaxyTheme.moonGlow.withOpacity(0.7),
+                        ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: GalaxyTheme.moonGlow.withOpacity(0.3)),
+                          borderSide: BorderSide(
+                            color: GalaxyTheme.moonGlow.withOpacity(0.3),
+                          ),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: GalaxyTheme.cyberpunkCyan),
+                          borderSide: const BorderSide(
+                            color: GalaxyTheme.cyberpunkCyan,
+                          ),
                         ),
-                        prefixIcon: Icon(Icons.music_note, color: GalaxyTheme.moonGlow.withOpacity(0.7)),
+                        prefixIcon: Icon(
+                          Icons.music_note,
+                          color: GalaxyTheme.moonGlow.withOpacity(0.7),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -683,16 +924,25 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
                       style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
                         labelText: 'Artist',
-                        labelStyle: TextStyle(color: GalaxyTheme.moonGlow.withOpacity(0.7)),
+                        labelStyle: TextStyle(
+                          color: GalaxyTheme.moonGlow.withOpacity(0.7),
+                        ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: GalaxyTheme.moonGlow.withOpacity(0.3)),
+                          borderSide: BorderSide(
+                            color: GalaxyTheme.moonGlow.withOpacity(0.3),
+                          ),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: GalaxyTheme.cyberpunkCyan),
+                          borderSide: const BorderSide(
+                            color: GalaxyTheme.cyberpunkCyan,
+                          ),
                         ),
-                        prefixIcon: Icon(Icons.person, color: GalaxyTheme.moonGlow.withOpacity(0.7)),
+                        prefixIcon: Icon(
+                          Icons.person,
+                          color: GalaxyTheme.moonGlow.withOpacity(0.7),
+                        ),
                       ),
                     ),
                   ],
@@ -703,7 +953,9 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
                   onPressed: () => Navigator.of(dialogContext).pop(),
                   child: Text(
                     'Cancel',
-                    style: TextStyle(color: GalaxyTheme.moonGlow.withOpacity(0.7)),
+                    style: TextStyle(
+                      color: GalaxyTheme.moonGlow.withOpacity(0.7),
+                    ),
                   ),
                 ),
                 ElevatedButton(
@@ -717,7 +969,7 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
                       );
                       return;
                     }
-                    
+
                     musicService.updateSong(
                       item.id,
                       title: titleController.text.trim(),
@@ -726,7 +978,7 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
                           : artistController.text.trim(),
                       albumArt: newImagePath,
                     );
-                    
+
                     Navigator.of(dialogContext).pop();
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
@@ -738,7 +990,10 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: GalaxyTheme.cyberpunkCyan,
                   ),
-                  child: const Text('Save', style: TextStyle(color: Colors.black)),
+                  child: const Text(
+                    'Save',
+                    style: TextStyle(color: Colors.black),
+                  ),
                 ),
               ],
             );

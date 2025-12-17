@@ -43,6 +43,11 @@ dependencies:
   youtube_explode_dart: ^2.0.2
   permission_handler: ^11.3.0
   path_provider: ^2.1.1
+  
+  # In-App Update (OTA) dependencies
+  http: ^1.2.0
+  package_info_plus: ^8.0.0
+  open_filex: ^4.5.0
 
 dev_dependencies:
   flutter_test:

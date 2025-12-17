@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Cho phép chia sẻ file từ external storage -->
+    <external-path name="external_files" path="." />
+    
+    <!-- Cho phép chia sẻ file từ internal storage -->
+    <files-path name="files" path="." />
+    
+    <!-- Cho phép chia sẻ cache files -->
+    <cache-path name="cache" path="." />
+    
+    <!-- Cho phép chia sẻ external cache files -->
+    <external-cache-path name="external_cache" path="." />
+    
+    <!-- Cho phép chia sẻ external files directory -->
+    <external-files-path name="external_files_path" path="." />
+</paths>
