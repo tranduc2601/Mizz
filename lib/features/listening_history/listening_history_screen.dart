@@ -26,10 +26,7 @@ class ListeningHistoryScreen extends StatelessWidget {
           ).createShader(bounds),
           child: const Text(
             'Listening History',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
           ),
         ),
         leading: IconButton(
@@ -141,8 +138,8 @@ class ListeningHistoryScreen extends StatelessWidget {
       child: ListenableBuilder(
         listenable: playerService,
         builder: (context, _) {
-          final isPlaying = playerService.currentSongId == song.id && 
-                           playerService.isPlaying;
+          final isPlaying =
+              playerService.currentSongId == song.id && playerService.isPlaying;
           final isCurrentSong = playerService.currentSongId == song.id;
 
           return ListTile(
@@ -154,9 +151,7 @@ class ListeningHistoryScreen extends StatelessWidget {
             title: Text(
               song.title,
               style: TextStyle(
-                color: isCurrentSong 
-                    ? GalaxyTheme.cyberpunkCyan 
-                    : Colors.white,
+                color: isCurrentSong ? GalaxyTheme.cyberpunkCyan : Colors.white,
                 fontWeight: FontWeight.w600,
                 fontSize: 16,
               ),
@@ -191,8 +186,14 @@ class ListeningHistoryScreen extends StatelessWidget {
                     shape: BoxShape.circle,
                     gradient: LinearGradient(
                       colors: isPlaying
-                          ? [GalaxyTheme.cyberpunkPink, GalaxyTheme.cyberpunkCyan]
-                          : [GalaxyTheme.cyberpunkCyan, GalaxyTheme.auroraGreen],
+                          ? [
+                              GalaxyTheme.cyberpunkPink,
+                              GalaxyTheme.cyberpunkCyan,
+                            ]
+                          : [
+                              GalaxyTheme.cyberpunkCyan,
+                              GalaxyTheme.auroraGreen,
+                            ],
                     ),
                   ),
                   child: IconButton(
@@ -207,7 +208,11 @@ class ListeningHistoryScreen extends StatelessWidget {
                         playerService.resume();
                       } else {
                         // Play this song
-                        playerService.playSong(song.id, song.musicSource);
+                        playerService.playSong(
+                          song.id,
+                          song.musicSource,
+                          localFilePath: song.localFilePath,
+                        );
                       }
                     },
                   ),
@@ -269,11 +274,7 @@ class ListeningHistoryScreen extends StatelessWidget {
   Widget _buildPlaceholder() {
     return Container(
       color: GalaxyTheme.cosmicViolet,
-      child: const Icon(
-        Icons.music_note,
-        color: Colors.white54,
-        size: 28,
-      ),
+      child: const Icon(Icons.music_note, color: Colors.white54, size: 28),
     );
   }
 

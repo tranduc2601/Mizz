@@ -1,93 +1,135 @@
 import 'package:flutter/material.dart';
-import 'package:just_audio/just_audio.dart' as just_audio;
-import 'package:just_audio/just_audio.dart' show AudioPlayer, ProcessingState;
-import 'package:audioplayers/audioplayers.dart' as ap;
+import 'package:just_audio/just_audio.dart';
+import 'package:audio_session/audio_session.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
 
 /// Loop mode enum
-enum LoopMode { none, one, all }
+enum MusicLoopMode { none, one, all }
 
 /// Music Player Service - Handles audio playback
-/// Uses just_audio for local files and audioplayers as fallback for YouTube
+/// Uses just_audio for all audio playback (local, URL, and YouTube)
 class MusicPlayerService extends ChangeNotifier {
   final AudioPlayer _audioPlayer = AudioPlayer();
-  final ap.AudioPlayer _fallbackPlayer = ap.AudioPlayer();
   final YoutubeExplode _youtubeExplode = YoutubeExplode();
   String? _currentSongId;
   bool _isPlaying = false;
   bool _isLoading = false;
-  bool _usingFallback = false;
-  LoopMode _loopMode = LoopMode.none;
+  MusicLoopMode _loopMode = MusicLoopMode.none;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
   double _volume = 1.0;
   double _playbackSpeed = 1.0;
   bool _autoNext = true; // Auto-play next song when current ends
+  bool _audioSessionInitialized = false;
 
   MusicPlayerService() {
-    // just_audio listeners
+    _initAudioSession();
+
+    // Position stream
     _audioPlayer.positionStream.listen((position) {
-      if (!_usingFallback) {
-        _position = position;
-        notifyListeners();
-      }
+      _position = position;
+      notifyListeners();
     });
 
+    // Duration stream
     _audioPlayer.durationStream.listen((duration) {
-      if (!_usingFallback) {
-        _duration = duration ?? Duration.zero;
-        notifyListeners();
-      }
+      _duration = duration ?? Duration.zero;
+      notifyListeners();
     });
 
+    // Player state stream
     _audioPlayer.playerStateStream.listen((state) {
-      if (!_usingFallback) {
-        _isPlaying = state.playing;
-        notifyListeners();
-      }
-    });
+      _isPlaying = state.playing;
+      notifyListeners();
 
-    // audioplayers listeners
-    _fallbackPlayer.onPositionChanged.listen((position) {
-      if (_usingFallback) {
-        _position = position;
-        notifyListeners();
-      }
-    });
-
-    _fallbackPlayer.onDurationChanged.listen((duration) {
-      if (_usingFallback) {
-        _duration = duration;
-        notifyListeners();
-      }
-    });
-
-    _fallbackPlayer.onPlayerStateChanged.listen((state) {
-      if (_usingFallback) {
-        _isPlaying = state == ap.PlayerState.playing;
-        notifyListeners();
-      }
-    });
-
-    // Handle song completion for loop
-    _audioPlayer.playerStateStream.listen((state) {
+      // Handle song completion
       if (state.processingState == ProcessingState.completed) {
         _handleSongComplete();
       }
     });
+  }
 
-    _fallbackPlayer.onPlayerComplete.listen((_) {
-      _handleSongComplete();
-    });
+  /// Initialize audio session for background playback
+  Future<void> _initAudioSession() async {
+    if (_audioSessionInitialized) return;
+    _audioSessionInitialized = true;
+
+    try {
+      final session = await AudioSession.instance;
+
+      // Configure for music playback with background support
+      await session.configure(
+        const AudioSessionConfiguration(
+          avAudioSessionCategory: AVAudioSessionCategory.playback,
+          avAudioSessionCategoryOptions:
+              AVAudioSessionCategoryOptions.mixWithOthers,
+          avAudioSessionMode: AVAudioSessionMode.defaultMode,
+          avAudioSessionRouteSharingPolicy:
+              AVAudioSessionRouteSharingPolicy.defaultPolicy,
+          avAudioSessionSetActiveOptions: AVAudioSessionSetActiveOptions.none,
+          androidAudioAttributes: AndroidAudioAttributes(
+            contentType: AndroidAudioContentType.music,
+            flags: AndroidAudioFlags.none,
+            usage: AndroidAudioUsage.media,
+          ),
+          androidAudioFocusGainType: AndroidAudioFocusGainType.gain,
+          androidWillPauseWhenDucked: false,
+        ),
+      );
+
+      // Handle audio interruptions (phone calls, etc.)
+      // Only pause for phone calls, not for app backgrounding
+      session.interruptionEventStream.listen((event) {
+        if (event.begin) {
+          switch (event.type) {
+            case AudioInterruptionType.duck:
+              // Lower volume instead of pausing
+              _audioPlayer.setVolume(_volume * 0.3);
+              break;
+            case AudioInterruptionType.pause:
+              // Only pause for important interruptions like phone calls
+              _audioPlayer.pause();
+              break;
+            case AudioInterruptionType.unknown:
+              // Don't pause for unknown interruptions (includes app backgrounding)
+              break;
+          }
+        } else {
+          switch (event.type) {
+            case AudioInterruptionType.duck:
+              // Restore volume
+              _audioPlayer.setVolume(_volume);
+              break;
+            case AudioInterruptionType.pause:
+              // Resume after phone call ends
+              if (_currentSongId != null) {
+                _audioPlayer.play();
+              }
+              break;
+            case AudioInterruptionType.unknown:
+              break;
+          }
+        }
+      });
+
+      // Handle headphone disconnection - pause when headphones are unplugged
+      session.becomingNoisyEventStream.listen((_) {
+        _audioPlayer.pause();
+      });
+
+      debugPrint('✅ Audio session configured for background playback');
+    } catch (e) {
+      debugPrint('⚠️ Failed to configure audio session: $e');
+    }
   }
 
   String? get currentSongId => _currentSongId;
   bool get isPlaying => _isPlaying;
   bool get isLoading => _isLoading;
-  LoopMode get loopMode => _loopMode;
+  MusicLoopMode get loopMode => _loopMode;
   Duration get position => _position;
   Duration get duration => _duration;
   double get volume => _volume;
@@ -105,20 +147,17 @@ class MusicPlayerService extends ChangeNotifier {
   /// Toggle loop mode: none -> one -> all -> none
   void toggleLoopMode() {
     switch (_loopMode) {
-      case LoopMode.none:
-        _loopMode = LoopMode.one;
-        _audioPlayer.setLoopMode(just_audio.LoopMode.one);
-        _fallbackPlayer.setReleaseMode(ap.ReleaseMode.loop);
+      case MusicLoopMode.none:
+        _loopMode = MusicLoopMode.one;
+        _audioPlayer.setLoopMode(LoopMode.one);
         break;
-      case LoopMode.one:
-        _loopMode = LoopMode.all;
-        _audioPlayer.setLoopMode(just_audio.LoopMode.off);
-        _fallbackPlayer.setReleaseMode(ap.ReleaseMode.release);
+      case MusicLoopMode.one:
+        _loopMode = MusicLoopMode.all;
+        _audioPlayer.setLoopMode(LoopMode.off);
         break;
-      case LoopMode.all:
-        _loopMode = LoopMode.none;
-        _audioPlayer.setLoopMode(just_audio.LoopMode.off);
-        _fallbackPlayer.setReleaseMode(ap.ReleaseMode.release);
+      case MusicLoopMode.all:
+        _loopMode = MusicLoopMode.none;
+        _audioPlayer.setLoopMode(LoopMode.off);
         break;
     }
     notifyListeners();
@@ -127,7 +166,7 @@ class MusicPlayerService extends ChangeNotifier {
   void _handleSongComplete() {
     // LoopMode.one is handled by the player itself
     // For other modes, notify the UI to handle auto-next
-    if (_loopMode != LoopMode.one && _autoNext) {
+    if (_loopMode != MusicLoopMode.one && _autoNext) {
       onSongComplete?.call(_currentSongId ?? '');
     }
   }
@@ -144,35 +183,46 @@ class MusicPlayerService extends ChangeNotifier {
   /// Set volume (0.0 to 1.0)
   Future<void> setVolume(double volume) async {
     _volume = volume.clamp(0.0, 1.0);
-    if (_usingFallback) {
-      await _fallbackPlayer.setVolume(_volume);
-    } else {
-      await _audioPlayer.setVolume(_volume);
-    }
+    await _audioPlayer.setVolume(_volume);
     notifyListeners();
   }
 
   /// Set playback speed (0.25 to 2.0)
   Future<void> setPlaybackSpeed(double speed) async {
     _playbackSpeed = speed.clamp(0.25, 2.0);
-    if (_usingFallback) {
-      await _fallbackPlayer.setPlaybackRate(_playbackSpeed);
-    } else {
-      await _audioPlayer.setSpeed(_playbackSpeed);
-    }
+    await _audioPlayer.setSpeed(_playbackSpeed);
     notifyListeners();
   }
 
-  Future<void> playSong(String songId, String musicSource) async {
+  Future<void> playSong(
+    String songId,
+    String musicSource, {
+    String? localFilePath,
+  }) async {
     try {
       _currentSongId = songId;
       _isLoading = true;
-      _usingFallback = false;
       notifyListeners();
 
       // Stop any playing audio first
       await _audioPlayer.stop();
-      await _fallbackPlayer.stop();
+
+      // If local file path is available, use it (fastest)
+      if (localFilePath != null && localFilePath.isNotEmpty) {
+        final localFile = File(localFilePath);
+        if (await localFile.exists()) {
+          debugPrint('✅ Playing from local cache (instant): $localFilePath');
+          await _audioPlayer.setFilePath(localFilePath);
+          await _audioPlayer.setVolume(_volume);
+          await _audioPlayer.setSpeed(_playbackSpeed);
+          await _audioPlayer.play();
+          _isLoading = false;
+          notifyListeners();
+          return;
+        } else {
+          debugPrint('⚠️ Local file not found, falling back to source');
+        }
+      }
 
       // Check if it's a YouTube URL
       if (musicSource.contains('youtube.com') ||
@@ -181,11 +231,15 @@ class MusicPlayerService extends ChangeNotifier {
       } else if (musicSource.startsWith('http')) {
         // Other URL
         await _audioPlayer.setUrl(musicSource);
+        await _audioPlayer.setVolume(_volume);
+        await _audioPlayer.setSpeed(_playbackSpeed);
         await _audioPlayer.play();
       } else {
         // Local file
         debugPrint('📁 Playing local file: $musicSource');
         await _audioPlayer.setFilePath(musicSource);
+        await _audioPlayer.setVolume(_volume);
+        await _audioPlayer.setSpeed(_playbackSpeed);
         await _audioPlayer.play();
       }
 
@@ -246,7 +300,7 @@ class MusicPlayerService extends ChangeNotifier {
       }
     }
 
-    // Strategy 3: Try WebM/Opus (may work with audioplayers)
+    // Strategy 3: Try WebM/Opus
     if (downloadedFile == null) {
       final webm = manifest.audioOnly
           .where((s) => s.container.name.toLowerCase() == 'webm')
@@ -266,25 +320,13 @@ class MusicPlayerService extends ChangeNotifier {
       throw Exception('No suitable audio stream found');
     }
 
-    // Try playing with just_audio first
-    try {
-      debugPrint('▶️ Trying just_audio...');
-      await _audioPlayer.setFilePath(downloadedFile.path);
-      await _audioPlayer.setVolume(_volume);
-      await _audioPlayer.setSpeed(_playbackSpeed);
-      await _audioPlayer.play();
-      debugPrint('✅ Playing with just_audio');
-    } catch (e) {
-      debugPrint('⚠️ just_audio failed: $e');
-      debugPrint('▶️ Trying audioplayers...');
-
-      // Fallback to audioplayers
-      _usingFallback = true;
-      await _fallbackPlayer.setVolume(_volume);
-      await _fallbackPlayer.setPlaybackRate(_playbackSpeed);
-      await _fallbackPlayer.play(ap.DeviceFileSource(downloadedFile.path));
-      debugPrint('✅ Playing with audioplayers');
-    }
+    // Play with just_audio
+    debugPrint('▶️ Playing with just_audio...');
+    await _audioPlayer.setFilePath(downloadedFile.path);
+    await _audioPlayer.setVolume(_volume);
+    await _audioPlayer.setSpeed(_playbackSpeed);
+    await _audioPlayer.play();
+    debugPrint('✅ Playing with just_audio');
   }
 
   Future<File?> _downloadStream(
@@ -341,44 +383,26 @@ class MusicPlayerService extends ChangeNotifier {
   }
 
   Future<void> pause() async {
-    if (_usingFallback) {
-      await _fallbackPlayer.pause();
-    } else {
-      await _audioPlayer.pause();
-    }
+    await _audioPlayer.pause();
   }
 
   Future<void> resume() async {
-    if (_usingFallback) {
-      await _fallbackPlayer.resume();
-    } else {
-      await _audioPlayer.play();
-    }
+    await _audioPlayer.play();
   }
 
   Future<void> stop() async {
-    if (_usingFallback) {
-      await _fallbackPlayer.stop();
-    } else {
-      await _audioPlayer.stop();
-    }
+    await _audioPlayer.stop();
     _currentSongId = null;
-    _usingFallback = false;
     notifyListeners();
   }
 
   Future<void> seek(Duration position) async {
-    if (_usingFallback) {
-      await _fallbackPlayer.seek(position);
-    } else {
-      await _audioPlayer.seek(position);
-    }
+    await _audioPlayer.seek(position);
   }
 
   @override
   void dispose() {
     _audioPlayer.dispose();
-    _fallbackPlayer.dispose();
     _youtubeExplode.close();
     super.dispose();
   }

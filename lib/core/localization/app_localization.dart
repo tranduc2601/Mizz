@@ -50,6 +50,7 @@ class AppLocalizations {
   String get myLibrary => _get('myLibrary');
   String get playlists => _get('playlists');
   String get favorites => _get('favorites');
+  String get songs => _get('songs');
   String get recentlyPlayed => _get('recentlyPlayed');
 
   // ========== Music ==========
@@ -113,6 +114,61 @@ class AppLocalizations {
   String get songAddedSuccess => _get('songAddedSuccess');
   String get profileUpdatedSuccess => _get('profileUpdatedSuccess');
 
+  // ========== Music Player ==========
+  String get noTrackLoaded => _get('noTrackLoaded');
+  String get loadingAudio => _get('loadingAudio');
+  String get playing => _get('playing');
+  String get paused => _get('paused');
+  String get stopped => _get('stopped');
+  String get unknownArtist => _get('unknownArtist');
+  String get unknownTitle => _get('unknownTitle');
+  String get pickLocalFile => _get('pickLocalFile');
+  String get playYouTubeLink => _get('playYouTubeLink');
+  String get pasteYouTubeUrl => _get('pasteYouTubeUrl');
+  String get smartAudioDemo => _get('smartAudioDemo');
+
+  // ========== Dialogs & Actions ==========
+  String get tapToAddImage => _get('tapToAddImage');
+  String get fileSelected => _get('fileSelected');
+  String get tapToUploadFile => _get('tapToUploadFile');
+  String get uploadFile => _get('uploadFile');
+  String get link => _get('link');
+  String get addSong => _get('addSong');
+  String get pleaseEnterSongName => _get('pleaseEnterSongName');
+  String get pleaseEnterMusicLink => _get('pleaseEnterMusicLink');
+  String get pleaseSelectMusicFile => _get('pleaseSelectMusicFile');
+  String get storagePermissionRequired => _get('storagePermissionRequired');
+  String get comingSoon => _get('comingSoon');
+  String get version => _get('version');
+  String get manageNotifications => _get('manageNotifications');
+  String get done => _get('done');
+
+  // ========== YouTube Download ==========
+  String get downloadForFasterPlayback => _get('downloadForFasterPlayback');
+  String get youtubeDownloadDescription => _get('youtubeDownloadDescription');
+  String get downloadingAudio => _get('downloadingAudio');
+  String get downloadComplete => _get('downloadComplete');
+  String get downloadCompleteDescription => _get('downloadCompleteDescription');
+  String get downloadFailed => _get('downloadFailed');
+  String get downloadNow => _get('downloadNow');
+  String get skipForNow => _get('skipForNow');
+
+  // ========== In-App Updates ==========
+  String get updates => _get('updates');
+  String get checkForUpdates => _get('checkForUpdates');
+  String get checkingForUpdates => _get('checkingForUpdates');
+  String get newVersionAvailable => _get('newVersionAvailable');
+  String get currentVersion => _get('currentVersion');
+  String get youAreUpToDate => _get('youAreUpToDate');
+  String get updateAvailable => _get('updateAvailable');
+  String get whatsNew => _get('whatsNew');
+  String get later => _get('later');
+  String get updateNow => _get('updateNow');
+  String get downloading => _get('downloading');
+  String get openingInstaller => _get('openingInstaller');
+  String get retry => _get('retry');
+  String get newLabel => _get('newLabel');
+
   // Private method to get localized string
   String _get(String key) {
     return _localizedStrings[locale.code]?[key] ??
@@ -145,6 +201,7 @@ class AppLocalizations {
       'myLibrary': 'Thư viện của tôi',
       'playlists': 'Danh sách phát',
       'favorites': 'Yêu thích',
+      'songs': 'Bài hát',
       'recentlyPlayed': 'Đã phát gần đây',
 
       // Music
@@ -207,6 +264,63 @@ class AppLocalizations {
       'fieldRequired': 'Trường này là bắt buộc',
       'songAddedSuccess': 'Đã thêm bài hát thành công!',
       'profileUpdatedSuccess': 'Đã cập nhật hồ sơ thành công!',
+
+      // Music Player
+      'noTrackLoaded': 'Chưa có bài hát',
+      'loadingAudio': 'Đang tải nhạc...',
+      'playing': 'Đang phát',
+      'paused': 'Tạm dừng',
+      'stopped': 'Đã dừng',
+      'unknownArtist': 'Nghệ sĩ không xác định',
+      'unknownTitle': 'Không có tiêu đề',
+      'pickLocalFile': 'Chọn tệp nhạc',
+      'playYouTubeLink': 'Phát link YouTube',
+      'pasteYouTubeUrl': 'Dán URL YouTube vào đây',
+      'smartAudioDemo': 'Demo Smart Audio',
+
+      // Dialogs & Actions
+      'tapToAddImage': 'Nhấn để thêm ảnh',
+      'fileSelected': 'Đã chọn tệp',
+      'tapToUploadFile': 'Nhấn để tải lên MP3/MP4',
+      'uploadFile': 'Tải lên tệp',
+      'link': 'Đường dẫn',
+      'addSong': 'Thêm bài hát',
+      'pleaseEnterSongName': 'Vui lòng nhập tên bài hát',
+      'pleaseEnterMusicLink': 'Vui lòng nhập link nhạc',
+      'pleaseSelectMusicFile': 'Vui lòng chọn tệp nhạc',
+      'storagePermissionRequired': 'Cần quyền truy cập bộ nhớ để tải tệp nhạc',
+      'comingSoon': 'Sắp có!',
+      'version': 'Phiên bản',
+      'manageNotifications': 'Quản lý thông báo',
+      'done': 'Xong',
+
+      // YouTube Download
+      'downloadForFasterPlayback': 'Tải xuống để phát nhanh hơn?',
+      'youtubeDownloadDescription':
+          'Bạn có muốn tải bài hát này về máy không? Điều này sẽ giúp phát nhạc nhanh hơn nhiều cho những lần sau.',
+      'downloadingAudio': 'Đang tải nhạc...',
+      'downloadComplete': 'Tải xuống hoàn tất!',
+      'downloadCompleteDescription':
+          'Bài hát sẽ được phát ngay lập tức từ bây giờ.',
+      'downloadFailed': 'Tải xuống thất bại. Vui lòng thử lại sau.',
+      'downloadNow': 'Tải ngay',
+      'skipForNow': 'Bỏ qua',
+
+      // In-App Updates
+      'updates': 'Cập nhật',
+      'checkForUpdates': 'Kiểm tra cập nhật',
+      'checkingForUpdates': 'Đang kiểm tra cập nhật...',
+      'newVersionAvailable': 'Có phiên bản mới',
+      'currentVersion': 'Phiên bản hiện tại',
+      'youAreUpToDate': 'Bạn đang sử dụng phiên bản mới nhất',
+      'updateAvailable': 'Có bản cập nhật mới',
+      'whatsNew': 'Có gì mới',
+      'later': 'Để sau',
+      'updateNow': 'Cập nhật ngay',
+      'downloading': 'Đang tải...',
+      'openingInstaller': 'Đang mở trình cài đặt...',
+      'retry': 'Thử lại',
+      'newLabel': 'MỚI',
     },
     'en': {
       // Common
@@ -231,6 +345,7 @@ class AppLocalizations {
       'myLibrary': 'My Library',
       'playlists': 'Playlists',
       'favorites': 'Favorites',
+      'songs': 'Songs',
       'recentlyPlayed': 'Recently Played',
 
       // Music
@@ -293,6 +408,64 @@ class AppLocalizations {
       'fieldRequired': 'This field is required',
       'songAddedSuccess': 'Song added successfully!',
       'profileUpdatedSuccess': 'Profile updated successfully!',
+
+      // Music Player
+      'noTrackLoaded': 'No track loaded',
+      'loadingAudio': 'Loading audio...',
+      'playing': 'Playing',
+      'paused': 'Paused',
+      'stopped': 'Stopped',
+      'unknownArtist': 'Unknown Artist',
+      'unknownTitle': 'Unknown Title',
+      'pickLocalFile': 'Pick Local Audio File',
+      'playYouTubeLink': 'Play YouTube Link',
+      'pasteYouTubeUrl': 'Paste YouTube URL here',
+      'smartAudioDemo': 'Smart Audio Handler Demo',
+
+      // Dialogs & Actions
+      'tapToAddImage': 'Tap to add image',
+      'fileSelected': 'File selected',
+      'tapToUploadFile': 'Tap to upload MP3/MP4 file',
+      'uploadFile': 'Upload File',
+      'link': 'Link',
+      'addSong': 'Add Song',
+      'pleaseEnterSongName': 'Please enter song name',
+      'pleaseEnterMusicLink': 'Please enter a music link',
+      'pleaseSelectMusicFile': 'Please select a music file',
+      'storagePermissionRequired':
+          'Storage permission is required to upload music files',
+      'comingSoon': 'Coming soon!',
+      'version': 'Version',
+      'manageNotifications': 'Manage notification preferences',
+      'done': 'Done',
+
+      // YouTube Download
+      'downloadForFasterPlayback': 'Download for faster playback?',
+      'youtubeDownloadDescription':
+          'Would you like to download this song to your device? This will make playback much faster next time.',
+      'downloadingAudio': 'Downloading audio...',
+      'downloadComplete': 'Download complete!',
+      'downloadCompleteDescription':
+          'The song will now play instantly from your device.',
+      'downloadFailed': 'Download failed. Please try again later.',
+      'downloadNow': 'Download Now',
+      'skipForNow': 'Skip for now',
+
+      // In-App Updates
+      'updates': 'Updates',
+      'checkForUpdates': 'Check for updates',
+      'checkingForUpdates': 'Checking for updates...',
+      'newVersionAvailable': 'New version available',
+      'currentVersion': 'Current version',
+      'youAreUpToDate': 'You are up to date',
+      'updateAvailable': 'Update available',
+      'whatsNew': "What's new",
+      'later': 'Later',
+      'updateNow': 'Update now',
+      'downloading': 'Downloading...',
+      'openingInstaller': 'Opening installer...',
+      'retry': 'Retry',
+      'newLabel': 'NEW',
     },
   };
 }

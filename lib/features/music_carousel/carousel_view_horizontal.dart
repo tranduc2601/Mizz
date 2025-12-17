@@ -1,12 +1,14 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:palette_generator/palette_generator.dart';
 import '../../core/theme.dart';
 import 'music_model.dart';
 import 'music_service.dart';
-import 'music_player_service.dart' show MusicPlayerService, LoopMode;
-import 'dart:io';
+import 'music_player_service.dart' show MusicPlayerService, MusicLoopMode;
+import 'widgets/carousel_3d.dart';
 
-/// New Horizontal Music Carousel with External Controls
+/// Music Carousel View with 3D Circular Carousel
 class MusicCarouselView extends StatefulWidget {
   const MusicCarouselView({super.key});
 
@@ -15,14 +17,13 @@ class MusicCarouselView extends StatefulWidget {
 }
 
 class _MusicCarouselViewState extends State<MusicCarouselView> {
-  late PageController _pageController;
   int _currentIndex = 0;
   late MusicPlayerService _playerService;
+  final Map<String, Color> _dominantColors = {};
 
   @override
   void initState() {
     super.initState();
-    _pageController = PageController(viewportFraction: 0.85);
     _playerService = MusicPlayerService();
     _playerService.addListener(() {
       if (mounted) setState(() {});
@@ -42,28 +43,23 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
     if (musicItems.isEmpty) return;
 
     int nextIndex;
-    if (_playerService.loopMode == LoopMode.all) {
-      // Loop all: go to first song if at end
+    if (_playerService.loopMode == MusicLoopMode.all) {
       nextIndex = (_currentIndex + 1) % musicItems.length;
     } else {
-      // Normal: go to next song if available
       nextIndex = _currentIndex + 1;
-      if (nextIndex >= musicItems.length) return; // No more songs
+      if (nextIndex >= musicItems.length) return;
     }
 
     setState(() {
       _currentIndex = nextIndex;
     });
 
-    _pageController.animateToPage(
-      nextIndex,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    );
-
-    // Auto-play the next song
     final nextSong = musicItems[nextIndex];
-    _playerService.playSong(nextSong.id, nextSong.musicSource);
+    _playerService.playSong(
+      nextSong.id,
+      nextSong.musicSource,
+      localFilePath: nextSong.localFilePath,
+    );
   }
 
   /// Play the previous song
@@ -71,28 +67,64 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
     final musicService = MusicServiceProvider.of(context);
     final musicItems = musicService.musicItems;
 
-    if (musicItems.isEmpty || _currentIndex <= 0) return;
+    if (musicItems.isEmpty) return;
 
-    final prevIndex = _currentIndex - 1;
+    int prevIndex;
+    if (_playerService.loopMode == MusicLoopMode.all) {
+      prevIndex = (_currentIndex - 1 + musicItems.length) % musicItems.length;
+    } else {
+      prevIndex = _currentIndex - 1;
+      if (prevIndex < 0) return;
+    }
 
     setState(() {
       _currentIndex = prevIndex;
     });
 
-    _pageController.animateToPage(
-      prevIndex,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    );
-
-    // Auto-play the previous song
     final prevSong = musicItems[prevIndex];
-    _playerService.playSong(prevSong.id, prevSong.musicSource);
+    _playerService.playSong(
+      prevSong.id,
+      prevSong.musicSource,
+      localFilePath: prevSong.localFilePath,
+    );
+  }
+
+  Future<void> _extractDominantColor(MusicItem item) async {
+    if (_dominantColors.containsKey(item.id)) return;
+    if (item.albumArt.isEmpty) {
+      _dominantColors[item.id] = GalaxyTheme.cyberpunkCyan;
+      return;
+    }
+
+    try {
+      ImageProvider imageProvider;
+      if (item.albumArt.startsWith('http')) {
+        imageProvider = NetworkImage(item.albumArt);
+      } else {
+        imageProvider = FileImage(File(item.albumArt));
+      }
+
+      final paletteGenerator = await PaletteGenerator.fromImageProvider(
+        imageProvider,
+        size: const Size(100, 100),
+        maximumColorCount: 5,
+      );
+
+      if (mounted) {
+        setState(() {
+          _dominantColors[item.id] =
+              paletteGenerator.dominantColor?.color ??
+              paletteGenerator.vibrantColor?.color ??
+              GalaxyTheme.cyberpunkCyan;
+        });
+      }
+    } catch (e) {
+      _dominantColors[item.id] = GalaxyTheme.cyberpunkCyan;
+    }
   }
 
   @override
   void dispose() {
-    _pageController.dispose();
     _playerService.dispose();
     super.dispose();
   }
@@ -107,30 +139,12 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
         final musicItems = musicService.musicItems;
 
         if (musicItems.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.music_note,
-                  size: 100,
-                  color: GalaxyTheme.moonGlow.withOpacity(0.3),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  'No songs yet',
-                  style: Theme.of(context).textTheme.headlineMedium,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Add your first song from the menu',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: GalaxyTheme.moonGlow.withOpacity(0.7),
-                  ),
-                ),
-              ],
-            ),
-          );
+          return _buildEmptyState(context);
+        }
+
+        // Extract colors for all items
+        for (final item in musicItems) {
+          _extractDominantColor(item);
         }
 
         // Ensure current index is valid
@@ -142,248 +156,264 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
         final isPlaying =
             _playerService.isPlaying &&
             _playerService.currentSongId == currentSong.id;
+        final currentColor =
+            _dominantColors[currentSong.id] ?? GalaxyTheme.cyberpunkCyan;
 
-        return Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Horizontal Card Carousel
-            SizedBox(
-              height: 250,
-              child: PageView.builder(
-                controller: _pageController,
-                onPageChanged: (index) {
+        return SingleChildScrollView(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const SizedBox(height: 20),
+
+              // 3D Circular Carousel
+              Carousel3D(
+                items: musicItems,
+                currentIndex: _currentIndex,
+                onIndexChanged: (index) {
                   setState(() {
                     _currentIndex = index;
                   });
                 },
-                itemCount: musicItems.length,
-                itemBuilder: (context, index) {
-                  return AnimatedBuilder(
-                    animation: _pageController,
-                    builder: (context, child) {
-                      double value = 0.0;
-                      if (_pageController.position.haveDimensions) {
-                        value = (_pageController.page ?? 0.0) - index;
-                      }
-
-                      final bool isCenter = index == _currentIndex;
-                      final double scale =
-                          1.0 - (value.abs() * 0.3).clamp(0.0, 0.3);
-                      final double opacity =
-                          1.0 - (value.abs() * 0.5).clamp(0.0, 0.5);
-
-                      return Transform.scale(
-                        scale: scale,
-                        child: Opacity(
-                          opacity: opacity,
-                          child: _buildHorizontalCard(
-                            context,
-                            musicItems[index],
-                            isCenter,
-                          ),
-                        ),
-                      );
-                    },
+                cardBuilder: (item, isFront, shadowColor) {
+                  return MusicCard3D(
+                    item: item,
+                    isFront: isFront,
+                    shadowColor: shadowColor,
+                    onMenuTap: isFront
+                        ? () => _showCardMenu(context, musicService, item)
+                        : null,
                   );
                 },
               ),
-            ),
 
-            const SizedBox(height: 30),
+              const SizedBox(height: 24),
 
-            // Song Info
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40),
-              child: Column(
-                children: [
-                  Text(
-                    currentSong.title,
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
+              // Song Info
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 40),
+                child: Column(
+                  children: [
+                    Text(
+                      currentSong.title,
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    textAlign: TextAlign.center,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    currentSong.artist,
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: GalaxyTheme.moonGlow.withOpacity(0.7),
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            // Playback Speed Button (above progress bar, right side)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [_buildSpeedButton()],
-              ),
-            ),
-
-            const SizedBox(height: 8),
-
-            // Progress Bar
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40),
-              child: Column(
-                children: [
-                  SliderTheme(
-                    data: SliderThemeData(
-                      trackHeight: 4,
-                      thumbShape: const RoundSliderThumbShape(
-                        enabledThumbRadius: 6,
+                    const SizedBox(height: 8),
+                    Text(
+                      currentSong.artist,
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: GalaxyTheme.moonGlow.withOpacity(0.7),
                       ),
-                      overlayShape: const RoundSliderOverlayShape(
-                        overlayRadius: 14,
-                      ),
+                      textAlign: TextAlign.center,
                     ),
-                    child: Slider(
-                      value: _playerService.progress,
-                      onChanged: (value) {
-                        final position = _playerService.duration * value;
-                        _playerService.seek(position);
-                      },
-                      activeColor: GalaxyTheme.cyberpunkCyan,
-                      inactiveColor: GalaxyTheme.moonGlow.withOpacity(0.2),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          _formatDuration(_playerService.position),
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                color: GalaxyTheme.moonGlow.withOpacity(0.6),
-                              ),
-                        ),
-                        Text(
-                          _formatDuration(_playerService.duration),
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                color: GalaxyTheme.moonGlow.withOpacity(0.6),
-                              ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
 
-            const SizedBox(height: 30),
+              const SizedBox(height: 16),
 
-            // Control Buttons
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Auto-Next Button (left of previous)
-                _buildAutoNextButton(),
-
-                const SizedBox(width: 12),
-
-                // Previous Button
-                _buildControlButton(
-                  icon: Icons.skip_previous,
-                  onPressed: _currentIndex > 0
-                      ? () => _playPreviousSong()
-                      : null,
+              // Speed Button
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 40),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [_buildSpeedButton()],
                 ),
+              ),
 
-                const SizedBox(width: 20),
+              const SizedBox(height: 8),
 
-                // Play/Pause Button
-                Container(
-                  width: 70,
-                  height: 70,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: [
-                        GalaxyTheme.cyberpunkPink,
-                        GalaxyTheme.cyberpunkCyan,
-                      ],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: GalaxyTheme.cyberpunkPink.withOpacity(0.5),
-                        blurRadius: 20,
-                        spreadRadius: 2,
-                      ),
-                    ],
-                  ),
-                  child: IconButton(
-                    icon: Icon(
-                      isPlaying ? Icons.pause : Icons.play_arrow,
-                      size: 36,
-                      color: Colors.white,
-                    ),
-                    onPressed: () async {
-                      try {
-                        if (isPlaying) {
-                          await _playerService.pause();
-                        } else {
-                          // Play the current song
-                          await _playerService.playSong(
-                            currentSong.id,
-                            currentSong.musicSource,
-                          );
-                        }
-                      } catch (e) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                'Error playing song: ${e.toString()}',
-                              ),
-                              backgroundColor: GalaxyTheme.stardustPink,
-                              duration: const Duration(seconds: 5),
-                            ),
-                          );
-                        }
-                      }
-                    },
-                  ),
-                ),
+              // Progress Bar
+              _buildProgressBar(context, currentColor),
 
-                const SizedBox(width: 20),
+              const SizedBox(height: 24),
 
-                // Next Button
-                _buildControlButton(
-                  icon: Icons.skip_next,
-                  onPressed: _currentIndex < musicItems.length - 1
-                      ? () => _playNextSong()
-                      : null,
-                ),
+              // Control Buttons
+              _buildControlButtons(
+                context,
+                musicItems,
+                currentSong,
+                isPlaying,
+                currentColor,
+              ),
 
-                const SizedBox(width: 12),
+              const SizedBox(height: 16),
 
-                // Loop Button
-                _buildLoopButton(),
-              ],
-            ),
+              // Volume Slider
+              _buildVolumeSlider(currentColor),
 
-            const SizedBox(height: 20),
-
-            // Volume Slider
-            _buildVolumeSlider(),
-          ],
+              const SizedBox(height: 20),
+            ],
+          ),
         );
       },
     );
   }
 
-  /// Build Auto-Next Button
+  Widget _buildEmptyState(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.music_note,
+            size: 100,
+            color: GalaxyTheme.moonGlow.withOpacity(0.3),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            'No songs yet',
+            style: Theme.of(context).textTheme.headlineMedium,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Add your first song from the menu',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: GalaxyTheme.moonGlow.withOpacity(0.7),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProgressBar(BuildContext context, Color accentColor) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 40),
+      child: Column(
+        children: [
+          SliderTheme(
+            data: SliderThemeData(
+              trackHeight: 4,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+              activeTrackColor: accentColor,
+              thumbColor: accentColor,
+            ),
+            child: Slider(
+              value: _playerService.progress,
+              onChanged: (value) {
+                final position = _playerService.duration * value;
+                _playerService.seek(position);
+              },
+              inactiveColor: GalaxyTheme.moonGlow.withOpacity(0.2),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  _formatDuration(_playerService.position),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: GalaxyTheme.moonGlow.withOpacity(0.6),
+                  ),
+                ),
+                Text(
+                  _formatDuration(_playerService.duration),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: GalaxyTheme.moonGlow.withOpacity(0.6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildControlButtons(
+    BuildContext context,
+    List<MusicItem> musicItems,
+    MusicItem currentSong,
+    bool isPlaying,
+    Color accentColor,
+  ) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // Auto-Next Button
+        _buildAutoNextButton(),
+
+        const SizedBox(width: 12),
+
+        // Previous Button
+        _buildControlButton(
+          icon: Icons.skip_previous,
+          onPressed: () => _playPreviousSong(),
+        ),
+
+        const SizedBox(width: 20),
+
+        // Play/Pause Button
+        Container(
+          width: 70,
+          height: 70,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              colors: [accentColor, accentColor.withOpacity(0.6)],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: accentColor.withOpacity(0.5),
+                blurRadius: 20,
+                spreadRadius: 2,
+              ),
+            ],
+          ),
+          child: IconButton(
+            icon: Icon(
+              isPlaying ? Icons.pause : Icons.play_arrow,
+              size: 36,
+              color: Colors.white,
+            ),
+            onPressed: () async {
+              try {
+                if (isPlaying) {
+                  await _playerService.pause();
+                } else {
+                  await _playerService.playSong(
+                    currentSong.id,
+                    currentSong.musicSource,
+                    localFilePath: currentSong.localFilePath,
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error: ${e.toString()}'),
+                      backgroundColor: GalaxyTheme.stardustPink,
+                    ),
+                  );
+                }
+              }
+            },
+          ),
+        ),
+
+        const SizedBox(width: 20),
+
+        // Next Button
+        _buildControlButton(
+          icon: Icons.skip_next,
+          onPressed: () => _playNextSong(),
+        ),
+
+        const SizedBox(width: 12),
+
+        // Loop Button
+        _buildLoopButton(),
+      ],
+    );
+  }
+
   Widget _buildAutoNextButton() {
     final isActive = _playerService.autoNext;
 
@@ -426,8 +456,7 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
     );
   }
 
-  /// Build Volume Slider
-  Widget _buildVolumeSlider() {
+  Widget _buildVolumeSlider(Color accentColor) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 40),
       child: Row(
@@ -447,13 +476,14 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
                 trackHeight: 3,
                 thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
                 overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                activeTrackColor: accentColor,
+                thumbColor: accentColor,
               ),
               child: Slider(
                 value: _playerService.volume,
                 onChanged: (value) {
                   _playerService.setVolume(value);
                 },
-                activeColor: GalaxyTheme.auroraGreen,
                 inactiveColor: GalaxyTheme.moonGlow.withOpacity(0.2),
               ),
             ),
@@ -472,7 +502,6 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
     );
   }
 
-  /// Build Speed Button with popup menu
   Widget _buildSpeedButton() {
     final speeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
@@ -544,15 +573,15 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
     Color color;
 
     switch (_playerService.loopMode) {
-      case LoopMode.none:
+      case MusicLoopMode.none:
         icon = Icons.repeat;
         color = GalaxyTheme.moonGlow.withOpacity(0.5);
         break;
-      case LoopMode.one:
+      case MusicLoopMode.one:
         icon = Icons.repeat_one;
         color = GalaxyTheme.cyberpunkCyan;
         break;
-      case LoopMode.all:
+      case MusicLoopMode.all:
         icon = Icons.repeat;
         color = GalaxyTheme.cyberpunkPink;
         break;
@@ -569,486 +598,6 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
           border: Border.all(color: color.withOpacity(0.5), width: 1),
         ),
         child: Icon(icon, color: color, size: 20),
-      ),
-    );
-  }
-
-  Widget _buildHorizontalCard(
-    BuildContext context,
-    MusicItem item,
-    bool isCenter,
-  ) {
-    final musicService = MusicServiceProvider.of(context);
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 20),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: GalaxyTheme.cyberpunkCyan.withOpacity(0.3),
-            blurRadius: 20,
-            spreadRadius: isCenter ? 5 : 2,
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // Album Art or Placeholder
-            item.albumArt.isEmpty
-                ? _buildPlaceholderImage(item.title)
-                : (item.albumArt.startsWith('http')
-                      ? Image.network(
-                          item.albumArt,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return _buildPlaceholderImage(item.title);
-                          },
-                        )
-                      : Image.file(
-                          File(item.albumArt),
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return _buildPlaceholderImage(item.title);
-                          },
-                        )),
-
-            // Three-dot menu button
-            Positioned(
-              top: 8,
-              right: 8,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: PopupMenuButton<String>(
-                  icon: const Icon(Icons.more_vert, color: Colors.white),
-                  color: GalaxyTheme.deepSpace.withOpacity(0.95),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(
-                      color: GalaxyTheme.moonGlow.withOpacity(0.3),
-                    ),
-                  ),
-                  onSelected: (value) {
-                    switch (value) {
-                      case 'playlist':
-                        // TODO: Add to playlist
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Add to playlist - Coming soon!'),
-                          ),
-                        );
-                        break;
-                      case 'favorite':
-                        musicService.toggleFavorite(item.id);
-                        break;
-                      case 'edit':
-                        _showEditDialog(context, musicService, item);
-                        break;
-                      case 'delete':
-                        _showDeleteDialog(context, musicService, item);
-                        break;
-                    }
-                  },
-                  itemBuilder: (BuildContext context) => [
-                    PopupMenuItem<String>(
-                      value: 'playlist',
-                      child: Row(
-                        children: [
-                          Icon(Icons.playlist_add, color: GalaxyTheme.moonGlow),
-                          const SizedBox(width: 12),
-                          Text(
-                            'Add to Playlist',
-                            style: TextStyle(color: GalaxyTheme.moonGlow),
-                          ),
-                        ],
-                      ),
-                    ),
-                    PopupMenuItem<String>(
-                      value: 'favorite',
-                      child: Row(
-                        children: [
-                          Icon(
-                            item.isFavorite
-                                ? Icons.favorite
-                                : Icons.favorite_border,
-                            color: item.isFavorite
-                                ? GalaxyTheme.cyberpunkPink
-                                : GalaxyTheme.moonGlow,
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            item.isFavorite
-                                ? 'Remove from Favorites'
-                                : 'Add to Favorites',
-                            style: TextStyle(color: GalaxyTheme.moonGlow),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const PopupMenuDivider(),
-                    PopupMenuItem<String>(
-                      value: 'edit',
-                      child: Row(
-                        children: [
-                          Icon(Icons.edit, color: GalaxyTheme.auroraGreen),
-                          const SizedBox(width: 12),
-                          Text(
-                            'Edit Song',
-                            style: TextStyle(color: GalaxyTheme.moonGlow),
-                          ),
-                        ],
-                      ),
-                    ),
-                    PopupMenuItem<String>(
-                      value: 'delete',
-                      child: Row(
-                        children: [
-                          Icon(Icons.delete, color: GalaxyTheme.stardustPink),
-                          const SizedBox(width: 12),
-                          Text(
-                            'Delete',
-                            style: TextStyle(color: GalaxyTheme.stardustPink),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showDeleteDialog(
-    BuildContext context,
-    MusicService musicService,
-    MusicItem item,
-  ) {
-    showDialog(
-      context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          backgroundColor: GalaxyTheme.deepSpace.withOpacity(0.95),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-            side: BorderSide(color: GalaxyTheme.moonGlow.withOpacity(0.3)),
-          ),
-          title: Text(
-            'Delete Song',
-            style: TextStyle(color: GalaxyTheme.moonGlow),
-          ),
-          content: Text(
-            'Are you sure you want to delete "${item.title}"?',
-            style: TextStyle(color: GalaxyTheme.moonGlow.withOpacity(0.8)),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-              },
-              child: Text(
-                'Cancel',
-                style: TextStyle(color: GalaxyTheme.moonGlow),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                musicService.removeSong(item.id);
-                Navigator.of(dialogContext).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Deleted "${item.title}"'),
-                    backgroundColor: GalaxyTheme.stardustPink,
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: GalaxyTheme.stardustPink,
-              ),
-              child: const Text('Delete'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _showEditDialog(
-    BuildContext context,
-    MusicService musicService,
-    MusicItem item,
-  ) {
-    final titleController = TextEditingController(text: item.title);
-    final artistController = TextEditingController(text: item.artist);
-    String? newImagePath = item.albumArt;
-
-    showDialog(
-      context: context,
-      builder: (BuildContext dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              backgroundColor: GalaxyTheme.deepSpace.withOpacity(0.95),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-                side: BorderSide(color: GalaxyTheme.moonGlow.withOpacity(0.3)),
-              ),
-              title: ShaderMask(
-                shaderCallback: (bounds) => const LinearGradient(
-                  colors: [
-                    GalaxyTheme.cyberpunkPink,
-                    GalaxyTheme.cyberpunkCyan,
-                  ],
-                ).createShader(bounds),
-                child: const Text(
-                  'Edit Song',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Album Art Preview
-                    GestureDetector(
-                      onTap: () async {
-                        final picker = ImagePicker();
-                        final image = await picker.pickImage(
-                          source: ImageSource.gallery,
-                        );
-                        if (image != null) {
-                          setState(() {
-                            newImagePath = image.path;
-                          });
-                        }
-                      },
-                      child: Container(
-                        width: 120,
-                        height: 120,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: GalaxyTheme.cyberpunkCyan.withOpacity(0.5),
-                            width: 2,
-                          ),
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(14),
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              if (newImagePath != null &&
-                                  newImagePath!.isNotEmpty)
-                                newImagePath!.startsWith('http')
-                                    ? Image.network(
-                                        newImagePath!,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (_, __, ___) =>
-                                            _buildPlaceholderImage(item.title),
-                                      )
-                                    : Image.file(
-                                        File(newImagePath!),
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (_, __, ___) =>
-                                            _buildPlaceholderImage(item.title),
-                                      )
-                              else
-                                _buildPlaceholderImage(item.title),
-                              Container(
-                                color: Colors.black38,
-                                child: const Center(
-                                  child: Icon(
-                                    Icons.camera_alt,
-                                    color: Colors.white,
-                                    size: 32,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Tap to change image',
-                      style: TextStyle(
-                        color: GalaxyTheme.moonGlow.withOpacity(0.6),
-                        fontSize: 12,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    // Title Field
-                    TextField(
-                      controller: titleController,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        labelText: 'Song Name',
-                        labelStyle: TextStyle(
-                          color: GalaxyTheme.moonGlow.withOpacity(0.7),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(
-                            color: GalaxyTheme.moonGlow.withOpacity(0.3),
-                          ),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(
-                            color: GalaxyTheme.cyberpunkCyan,
-                          ),
-                        ),
-                        prefixIcon: Icon(
-                          Icons.music_note,
-                          color: GalaxyTheme.moonGlow.withOpacity(0.7),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    // Artist Field
-                    TextField(
-                      controller: artistController,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        labelText: 'Artist',
-                        labelStyle: TextStyle(
-                          color: GalaxyTheme.moonGlow.withOpacity(0.7),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(
-                            color: GalaxyTheme.moonGlow.withOpacity(0.3),
-                          ),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(
-                            color: GalaxyTheme.cyberpunkCyan,
-                          ),
-                        ),
-                        prefixIcon: Icon(
-                          Icons.person,
-                          color: GalaxyTheme.moonGlow.withOpacity(0.7),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: Text(
-                    'Cancel',
-                    style: TextStyle(
-                      color: GalaxyTheme.moonGlow.withOpacity(0.7),
-                    ),
-                  ),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    if (titleController.text.trim().isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Song name cannot be empty'),
-                          backgroundColor: GalaxyTheme.stardustPink,
-                        ),
-                      );
-                      return;
-                    }
-
-                    musicService.updateSong(
-                      item.id,
-                      title: titleController.text.trim(),
-                      artist: artistController.text.trim().isEmpty
-                          ? 'Unknown Artist'
-                          : artistController.text.trim(),
-                      albumArt: newImagePath,
-                    );
-
-                    Navigator.of(dialogContext).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Updated "${titleController.text}"'),
-                        backgroundColor: GalaxyTheme.auroraGreen,
-                      ),
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: GalaxyTheme.cyberpunkCyan,
-                  ),
-                  child: const Text(
-                    'Save',
-                    style: TextStyle(color: Colors.black),
-                  ),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildPlaceholderImage(String title) {
-    final hash = title.hashCode.abs();
-    final colors = [
-      [GalaxyTheme.cosmicViolet, GalaxyTheme.galaxyBlue],
-      [GalaxyTheme.nebulaPurple, GalaxyTheme.stardustPink],
-      [GalaxyTheme.cyberpunkPink, GalaxyTheme.cyberpunkCyan],
-      [GalaxyTheme.auroraGreen, GalaxyTheme.galaxyBlue],
-    ];
-    final selectedColors = colors[hash % colors.length];
-
-    final words = title.trim().split(' ');
-    String displayText;
-    if (words.length >= 2) {
-      displayText = words[0][0].toUpperCase() + words[1][0].toUpperCase();
-    } else if (title.length >= 2) {
-      displayText = title.substring(0, 2).toUpperCase();
-    } else {
-      displayText = title.toUpperCase();
-    }
-
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: selectedColors,
-        ),
-      ),
-      child: Center(
-        child: Text(
-          displayText,
-          style: const TextStyle(
-            fontFamily: 'Times New Roman',
-            fontSize: 80,
-            fontWeight: FontWeight.w400,
-            color: Colors.white,
-            letterSpacing: 8,
-            shadows: [
-              Shadow(
-                color: Colors.black45,
-                offset: Offset(4, 4),
-                blurRadius: 8,
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -1073,6 +622,303 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
         icon: Icon(icon, color: color ?? GalaxyTheme.moonGlow, size: 24),
         onPressed: onPressed,
       ),
+    );
+  }
+
+  void _showCardMenu(
+    BuildContext context,
+    MusicService musicService,
+    MusicItem item,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: GalaxyTheme.deepSpace.withOpacity(0.95),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: GalaxyTheme.moonGlow.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: Icon(Icons.playlist_add, color: GalaxyTheme.moonGlow),
+                title: Text(
+                  'Add to Playlist',
+                  style: TextStyle(color: GalaxyTheme.moonGlow),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('Coming soon!')));
+                },
+              ),
+              ListTile(
+                leading: Icon(
+                  item.isFavorite ? Icons.favorite : Icons.favorite_border,
+                  color: item.isFavorite
+                      ? GalaxyTheme.cyberpunkPink
+                      : GalaxyTheme.moonGlow,
+                ),
+                title: Text(
+                  item.isFavorite
+                      ? 'Remove from Favorites'
+                      : 'Add to Favorites',
+                  style: TextStyle(color: GalaxyTheme.moonGlow),
+                ),
+                onTap: () {
+                  musicService.toggleFavorite(item.id);
+                  Navigator.pop(context);
+                },
+              ),
+              const Divider(color: Colors.white24),
+              ListTile(
+                leading: Icon(Icons.edit, color: GalaxyTheme.auroraGreen),
+                title: Text(
+                  'Edit Song',
+                  style: TextStyle(color: GalaxyTheme.moonGlow),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showEditDialog(context, musicService, item);
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.delete, color: GalaxyTheme.stardustPink),
+                title: Text(
+                  'Delete',
+                  style: TextStyle(color: GalaxyTheme.stardustPink),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showDeleteDialog(context, musicService, item);
+                },
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showEditDialog(
+    BuildContext context,
+    MusicService musicService,
+    MusicItem item,
+  ) {
+    final titleController = TextEditingController(text: item.title);
+    final artistController = TextEditingController(text: item.artist);
+    String? newImagePath = item.albumArt;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              backgroundColor: GalaxyTheme.deepSpace.withOpacity(0.95),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(color: GalaxyTheme.moonGlow.withOpacity(0.3)),
+              ),
+              title: const Text(
+                'Edit Song',
+                style: TextStyle(color: GalaxyTheme.moonGlow),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Album Art Preview
+                    GestureDetector(
+                      onTap: () async {
+                        final picker = ImagePicker();
+                        final image = await picker.pickImage(
+                          source: ImageSource.gallery,
+                        );
+                        if (image != null) {
+                          setState(() {
+                            newImagePath = image.path;
+                          });
+                        }
+                      },
+                      child: Container(
+                        width: 100,
+                        height: 100,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: GalaxyTheme.cyberpunkCyan.withOpacity(0.5),
+                          ),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              if (newImagePath != null &&
+                                  newImagePath!.isNotEmpty)
+                                newImagePath!.startsWith('http')
+                                    ? Image.network(
+                                        newImagePath!,
+                                        fit: BoxFit.cover,
+                                      )
+                                    : Image.file(
+                                        File(newImagePath!),
+                                        fit: BoxFit.cover,
+                                      )
+                              else
+                                Container(
+                                  color: GalaxyTheme.deepSpace,
+                                  child: const Icon(
+                                    Icons.music_note,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              Container(
+                                color: Colors.black38,
+                                child: const Center(
+                                  child: Icon(
+                                    Icons.camera_alt,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildTextField(
+                      titleController,
+                      'Song Name',
+                      Icons.music_note,
+                    ),
+                    const SizedBox(height: 12),
+                    _buildTextField(artistController, 'Artist', Icons.person),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: Text(
+                    'Cancel',
+                    style: TextStyle(
+                      color: GalaxyTheme.moonGlow.withOpacity(0.7),
+                    ),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    musicService.updateSong(
+                      item.id,
+                      title: titleController.text.trim(),
+                      artist: artistController.text.trim(),
+                      albumArt: newImagePath,
+                    );
+                    Navigator.pop(dialogContext);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: GalaxyTheme.cyberpunkCyan,
+                  ),
+                  child: const Text(
+                    'Save',
+                    style: TextStyle(color: Colors.black),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildTextField(
+    TextEditingController controller,
+    String label,
+    IconData icon,
+  ) {
+    return TextField(
+      controller: controller,
+      style: const TextStyle(color: Colors.white),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: TextStyle(color: GalaxyTheme.moonGlow.withOpacity(0.7)),
+        prefixIcon: Icon(icon, color: GalaxyTheme.moonGlow.withOpacity(0.7)),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: GalaxyTheme.moonGlow.withOpacity(0.3)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: GalaxyTheme.cyberpunkCyan),
+        ),
+      ),
+    );
+  }
+
+  void _showDeleteDialog(
+    BuildContext context,
+    MusicService musicService,
+    MusicItem item,
+  ) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: GalaxyTheme.deepSpace.withOpacity(0.95),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(color: GalaxyTheme.moonGlow.withOpacity(0.3)),
+          ),
+          title: const Text(
+            'Delete Song',
+            style: TextStyle(color: GalaxyTheme.moonGlow),
+          ),
+          content: Text(
+            'Are you sure you want to delete "${item.title}"?',
+            style: TextStyle(color: GalaxyTheme.moonGlow.withOpacity(0.8)),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: GalaxyTheme.moonGlow.withOpacity(0.7)),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                musicService.removeSong(item.id);
+                Navigator.pop(dialogContext);
+                if (_currentIndex >= musicService.musicItems.length) {
+                  _currentIndex = musicService.musicItems.length - 1;
+                  if (_currentIndex < 0) _currentIndex = 0;
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: GalaxyTheme.stardustPink,
+              ),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
     );
   }
 

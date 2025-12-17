@@ -2,43 +2,35 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:audio_session/audio_session.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:rxdart/rxdart.dart';
 
-/// Player state enum
-enum PlayerState { stopped, playing, paused, completed }
-
-/// Smart Audio Handler - Universal audio player with YouTube caching
-/// Uses just_audio for reliable playback
-class SmartAudioHandler extends ChangeNotifier {
-  final AudioPlayer _audioPlayer = AudioPlayer();
+/// Background Audio Handler with YouTube Caching
+/// Uses just_audio + audio_session for background playback
+class BackgroundAudioHandler {
+  final AudioPlayer _player = AudioPlayer();
   final YoutubeExplode _youtubeExplode = YoutubeExplode();
 
   // State management
   final ValueNotifier<bool> isLoading = ValueNotifier<bool>(false);
   final ValueNotifier<String?> errorMessage = ValueNotifier<String?>(null);
-  final ValueNotifier<PlayerState> playerState = ValueNotifier<PlayerState>(
-    PlayerState.stopped,
-  );
-  final ValueNotifier<Duration> position = ValueNotifier<Duration>(
-    Duration.zero,
-  );
-  final ValueNotifier<Duration> duration = ValueNotifier<Duration>(
-    Duration.zero,
-  );
 
   String? _currentSource;
   String? _currentTitle;
+  String? _currentArtist;
+
+  bool _initialized = false;
 
   // YouTube cache management
-  static const String _cacheKey = 'youtube_audio_cache_smart';
+  static const String _cacheKey = 'youtube_audio_cache_v2';
   Map<String, String> _youtubeCache = {};
 
-  SmartAudioHandler() {
-    _initializeListeners();
+  BackgroundAudioHandler() {
     _loadCache();
   }
 
@@ -48,9 +40,7 @@ class SmartAudioHandler extends ChangeNotifier {
       final cacheJson = prefs.getString(_cacheKey);
       if (cacheJson != null) {
         _youtubeCache = Map<String, String>.from(jsonDecode(cacheJson));
-        debugPrint(
-          '📂 SmartAudioHandler: Loaded ${_youtubeCache.length} cached songs',
-        );
+        debugPrint('📂 Loaded ${_youtubeCache.length} cached YouTube songs');
       }
     } catch (e) {
       debugPrint('⚠️ Failed to load cache: $e');
@@ -66,38 +56,65 @@ class SmartAudioHandler extends ChangeNotifier {
     }
   }
 
-  void _initializeListeners() {
-    _audioPlayer.playerStateStream.listen((state) {
-      if (state.processingState == ProcessingState.completed) {
-        playerState.value = PlayerState.completed;
-      } else if (state.playing) {
-        playerState.value = PlayerState.playing;
+  Future<void> init() async {
+    if (_initialized) return;
+    _initialized = true;
+
+    // Configure audio session for music playback
+    final session = await AudioSession.instance;
+    await session.configure(const AudioSessionConfiguration.music());
+
+    // Handle audio interruptions (phone calls, etc.)
+    session.interruptionEventStream.listen((event) {
+      if (event.begin) {
+        switch (event.type) {
+          case AudioInterruptionType.duck:
+            _player.setVolume(0.5);
+            break;
+          case AudioInterruptionType.pause:
+          case AudioInterruptionType.unknown:
+            _player.pause();
+            break;
+        }
       } else {
-        playerState.value = PlayerState.paused;
+        switch (event.type) {
+          case AudioInterruptionType.duck:
+            _player.setVolume(1.0);
+            break;
+          case AudioInterruptionType.pause:
+          case AudioInterruptionType.unknown:
+            _player.play();
+            break;
+        }
       }
-      notifyListeners();
     });
 
-    _audioPlayer.positionStream.listen((pos) {
-      position.value = pos;
-      notifyListeners();
-    });
-
-    _audioPlayer.durationStream.listen((dur) {
-      if (dur != null) {
-        duration.value = dur;
-        notifyListeners();
-      }
+    // Handle headphone disconnection
+    session.becomingNoisyEventStream.listen((_) {
+      _player.pause();
     });
   }
 
   // Getters
-  bool get isPlaying => playerState.value == PlayerState.playing;
+  bool get isPlaying => _player.playing;
   String? get currentSource => _currentSource;
   String? get currentTitle => _currentTitle;
-  Stream<Duration> get positionStream => _audioPlayer.positionStream;
-  Stream<Duration?> get durationStream => _audioPlayer.durationStream;
-  Stream<bool> get playingStream => _audioPlayer.playingStream;
+  Duration get position => _player.position;
+  Duration get duration => _player.duration ?? Duration.zero;
+  Stream<Duration> get positionStream => _player.positionStream;
+  Stream<Duration?> get durationStream => _player.durationStream;
+  Stream<PlayerState> get playerStateStream => _player.playerStateStream;
+  Stream<bool> get playingStream => _player.playingStream;
+
+  /// Combined stream for UI updates
+  Stream<PositionData> get positionDataStream =>
+      Rx.combineLatest3<Duration, Duration, Duration?, PositionData>(
+        _player.positionStream,
+        _player.bufferedPositionStream,
+        _player.durationStream,
+        (position, bufferedPosition, duration) =>
+            PositionData(position, bufferedPosition, duration ?? Duration.zero),
+      );
 
   /// Extract video ID from YouTube URL
   String? _extractVideoId(String url) {
@@ -117,11 +134,13 @@ class SmartAudioHandler extends ChangeNotifier {
   }
 
   /// Universal play function - automatically detects input type
-  Future<void> playInput(String input, {String? title}) async {
+  Future<void> playInput(String input, {String? title, String? artist}) async {
     try {
+      await init();
       isLoading.value = true;
       errorMessage.value = null;
       _currentTitle = title;
+      _currentArtist = artist;
       _currentSource = input;
 
       // Case A: YouTube URL
@@ -130,18 +149,18 @@ class SmartAudioHandler extends ChangeNotifier {
       }
       // Case B: Direct HTTP/HTTPS URL
       else if (input.startsWith('http://') || input.startsWith('https://')) {
-        await _playDirectUrl(input);
+        await _playDirectUrl(input, title: title);
       }
       // Case C: Local file path
       else {
-        await _playLocalFile(input);
+        await _playLocalFile(input, title: title);
       }
 
       isLoading.value = false;
     } catch (e) {
       isLoading.value = false;
       errorMessage.value = 'Playback error: ${e.toString()}';
-      debugPrint('❌ SmartAudioHandler Error: $e');
+      debugPrint('❌ BackgroundAudioHandler Error: $e');
       rethrow;
     }
   }
@@ -162,8 +181,8 @@ class SmartAudioHandler extends ChangeNotifier {
         final cachedFile = File(cachedPath);
         if (await cachedFile.exists()) {
           debugPrint('✅ Playing from cache (instant): $cachedPath');
-          await _audioPlayer.setFilePath(cachedPath);
-          await _audioPlayer.play();
+          await _player.setFilePath(cachedPath);
+          await _player.play();
           return;
         } else {
           _youtubeCache.remove(videoId);
@@ -174,6 +193,7 @@ class SmartAudioHandler extends ChangeNotifier {
       // Get video metadata
       final video = await _youtubeExplode.videos.get(youtubeUrl);
       _currentTitle ??= video.title;
+      _currentArtist ??= video.author;
 
       // Get audio-only stream manifest
       final manifest = await _youtubeExplode.videos.streamsClient.getManifest(
@@ -194,7 +214,7 @@ class SmartAudioHandler extends ChangeNotifier {
         audioStream = manifest.audioOnly.withHighestBitrate();
       }
 
-      // Download to cache directory
+      // Download to PERMANENT cache directory
       debugPrint('📥 Downloading and caching audio...');
       final cacheDir = await _getCacheDirectory();
       final extension = audioStream.container.name.toLowerCase();
@@ -220,8 +240,8 @@ class SmartAudioHandler extends ChangeNotifier {
       debugPrint('✅ Cached: ${cacheFile.path}');
 
       // Play
-      await _audioPlayer.setFilePath(cacheFile.path);
-      await _audioPlayer.play();
+      await _player.setFilePath(cacheFile.path);
+      await _player.play();
     } catch (e) {
       errorMessage.value = 'Failed to extract YouTube audio: $e';
       debugPrint('❌ YouTube extraction failed: $e');
@@ -239,11 +259,11 @@ class SmartAudioHandler extends ChangeNotifier {
   }
 
   /// Case B: Play direct MP3/stream URL
-  Future<void> _playDirectUrl(String url) async {
+  Future<void> _playDirectUrl(String url, {String? title}) async {
     try {
       debugPrint('🌐 Playing direct URL: $url');
-      await _audioPlayer.setUrl(url);
-      await _audioPlayer.play();
+      await _player.setUrl(url);
+      await _player.play();
     } catch (e) {
       errorMessage.value = 'Failed to play URL: $e';
       debugPrint('❌ URL playback failed: $e');
@@ -252,7 +272,7 @@ class SmartAudioHandler extends ChangeNotifier {
   }
 
   /// Case C: Play local device file
-  Future<void> _playLocalFile(String filePath) async {
+  Future<void> _playLocalFile(String filePath, {String? title}) async {
     try {
       debugPrint('📁 Playing local file: $filePath');
       final file = File(filePath);
@@ -261,8 +281,11 @@ class SmartAudioHandler extends ChangeNotifier {
         throw Exception('File does not exist: $filePath');
       }
 
-      await _audioPlayer.setFilePath(filePath);
-      await _audioPlayer.play();
+      final fileName = filePath.split(Platform.pathSeparator).last;
+      _currentTitle = title ?? fileName;
+
+      await _player.setFilePath(filePath);
+      await _player.play();
     } catch (e) {
       errorMessage.value = 'Failed to play local file: $e';
       debugPrint('❌ Local file playback failed: $e');
@@ -302,8 +325,6 @@ class SmartAudioHandler extends ChangeNotifier {
       }
 
       final fileName = filePath.split(Platform.pathSeparator).last;
-      _currentTitle = fileName;
-
       await playInput(filePath, title: fileName);
       return true;
     } catch (e) {
@@ -371,37 +392,58 @@ class SmartAudioHandler extends ChangeNotifier {
   }
 
   // Playback controls
-  Future<void> pause() async {
-    await _audioPlayer.pause();
+  Future<void> play() async {
+    await _player.play();
   }
 
-  Future<void> resume() async {
-    await _audioPlayer.play();
+  Future<void> pause() async {
+    await _player.pause();
   }
 
   Future<void> stop() async {
-    await _audioPlayer.stop();
+    await _player.stop();
     _currentSource = null;
     _currentTitle = null;
   }
 
   Future<void> seek(Duration position) async {
-    await _audioPlayer.seek(position);
+    await _player.seek(position);
+  }
+
+  Future<void> togglePlayPause() async {
+    if (_player.playing) {
+      await pause();
+    } else {
+      await play();
+    }
   }
 
   Future<void> setVolume(double volume) async {
-    await _audioPlayer.setVolume(volume.clamp(0.0, 1.0));
+    await _player.setVolume(volume.clamp(0.0, 1.0));
   }
 
-  @override
   void dispose() {
-    _audioPlayer.dispose();
+    _player.dispose();
     _youtubeExplode.close();
     isLoading.dispose();
     errorMessage.dispose();
-    playerState.dispose();
-    position.dispose();
-    duration.dispose();
-    super.dispose();
   }
+}
+
+/// Helper class for position data
+class PositionData {
+  final Duration position;
+  final Duration bufferedPosition;
+  final Duration duration;
+
+  PositionData(this.position, this.bufferedPosition, this.duration);
+}
+
+/// Global audio handler instance
+late BackgroundAudioHandler audioHandler;
+
+/// Initialize audio handler - call this in main()
+Future<void> initAudioService() async {
+  audioHandler = BackgroundAudioHandler();
+  await audioHandler.init();
 }

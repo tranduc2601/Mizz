@@ -4,7 +4,9 @@ class MusicItem {
   final String title;
   final String artist;
   final String albumArt;
-  final String musicSource; // File path or URL
+  final String musicSource; // File path or URL (YouTube or direct)
+  final String?
+  localFilePath; // Cached local MP3 file path (for faster playback)
   final String duration;
   final bool isFavorite;
 
@@ -14,9 +16,20 @@ class MusicItem {
     required this.artist,
     this.albumArt = '',
     required this.musicSource,
+    this.localFilePath,
     required this.duration,
     this.isFavorite = false,
   });
+
+  /// Check if this is a YouTube source
+  bool get isYouTubeSource =>
+      musicSource.contains('youtube.com') || musicSource.contains('youtu.be');
+
+  /// Get the best source to play (prefer local file if available)
+  String get playableSource => localFilePath ?? musicSource;
+
+  /// Check if local cache exists
+  bool get hasLocalCache => localFilePath != null && localFilePath!.isNotEmpty;
 
   MusicItem copyWith({
     String? id,
@@ -24,6 +37,7 @@ class MusicItem {
     String? artist,
     String? albumArt,
     String? musicSource,
+    String? localFilePath,
     String? duration,
     bool? isFavorite,
   }) {
@@ -33,6 +47,7 @@ class MusicItem {
       artist: artist ?? this.artist,
       albumArt: albumArt ?? this.albumArt,
       musicSource: musicSource ?? this.musicSource,
+      localFilePath: localFilePath ?? this.localFilePath,
       duration: duration ?? this.duration,
       isFavorite: isFavorite ?? this.isFavorite,
     );

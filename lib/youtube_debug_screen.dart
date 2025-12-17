@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:audioplayers/audioplayers.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 
 void main() {
   runApp(const YouTubeDebugApp());
@@ -20,12 +22,12 @@ class YouTubeDebugApp extends StatelessWidget {
   }
 }
 
-/// Robust YouTube URL Handler - Prioritizes MP4/M4A streams
+/// Robust YouTube URL Handler - Downloads and plays audio
 class YoutubeUrlHandler {
   final YoutubeExplode _yt = YoutubeExplode();
 
-  /// Extract playable audio URL with MP4/M4A priority
-  Future<String> getPlayableAudioUrl(String originalUrl) async {
+  /// Download and return local file path for playback
+  Future<String> downloadAudio(String originalUrl) async {
     try {
       debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       debugPrint('🔍 EXTRACTING YOUTUBE AUDIO');
@@ -55,7 +57,7 @@ class YoutubeUrlHandler {
       }
 
       // Step 3: PRIORITY 1 - Find MP4/M4A stream
-      StreamInfo? selectedStream;
+      AudioOnlyStreamInfo? selectedStream;
 
       try {
         selectedStream = audioStreams.firstWhere((stream) {
@@ -68,31 +70,41 @@ class YoutubeUrlHandler {
           '📦 Container: ${selectedStream.container.name.toUpperCase()}',
         );
         debugPrint('📊 Bitrate: ${selectedStream.bitrate}');
-        debugPrint('🏷️ Tag: ${selectedStream.tag}');
-        debugPrint('🔗 Stream URL: ${selectedStream.url}');
       } catch (e) {
         // Step 4: PRIORITY 2 - Fallback to highest bitrate
         debugPrint('\n⚠️ WARNING: No MP4/M4A stream found!');
-        debugPrint(
-          '⚠️ Falling back to highest bitrate stream (may be WebM/Opus)',
-        );
-        debugPrint(
-          '⚠️ This may cause playback issues on some Android devices!',
-        );
+        debugPrint('⚠️ Falling back to highest bitrate stream');
 
         selectedStream = manifest.audioOnly.withHighestBitrate();
-
         debugPrint(
           '📦 Fallback Container: ${selectedStream.container.name.toUpperCase()}',
         );
-        debugPrint('📊 Fallback Bitrate: ${selectedStream.bitrate}');
-        debugPrint('🏷️ Fallback Tag: ${selectedStream.tag}');
-        debugPrint('🔗 Fallback URL: ${selectedStream.url}');
       }
 
+      // Download to temp file
+      final tempDir = await getTemporaryDirectory();
+      final ext = selectedStream.container.name.toLowerCase();
+      final tempFile = File('${tempDir.path}/yt_debug_${video.id.value}.$ext');
+
+      if (await tempFile.exists()) {
+        await tempFile.delete();
+      }
+
+      debugPrint('📥 Downloading audio stream...');
+      final stream = _yt.videos.streamsClient.get(selectedStream);
+      final fileStream = tempFile.openWrite();
+
+      await for (final chunk in stream) {
+        fileStream.add(chunk);
+      }
+
+      await fileStream.flush();
+      await fileStream.close();
+
+      debugPrint('✅ Download complete: ${tempFile.path}');
       debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
-      return selectedStream.url.toString();
+      return tempFile.path;
     } catch (e) {
       debugPrint('❌ EXTRACTION FAILED: $e');
       debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
@@ -120,7 +132,7 @@ class _YouTubeDebugScreenState extends State<YouTubeDebugScreen> {
 
   String _status = 'Ready to test';
   bool _isLoading = false;
-  PlayerState _playerState = PlayerState.stopped;
+  bool _isPlaying = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
 
@@ -132,34 +144,31 @@ class _YouTubeDebugScreenState extends State<YouTubeDebugScreen> {
     _urlController.text = 'https://youtu.be/dQw4w9WgXcQ'; // Example
 
     // Listen to player state
-    _audioPlayer.onPlayerStateChanged.listen((state) {
+    _audioPlayer.playerStateStream.listen((state) {
       if (mounted) {
         setState(() {
-          _playerState = state;
-          if (state == PlayerState.playing) {
+          _isPlaying = state.playing;
+          if (state.playing) {
             _status = '✅ Playing successfully!';
-          } else if (state == PlayerState.paused) {
-            _status = '⏸️ Paused';
-          } else if (state == PlayerState.stopped) {
-            _status = '⏹️ Stopped';
-          } else if (state == PlayerState.completed) {
+          } else if (state.processingState == ProcessingState.completed) {
             _status = '✅ Playback completed';
+            _isPlaying = false;
           }
         });
       }
     });
 
     // Listen to position
-    _audioPlayer.onPositionChanged.listen((pos) {
+    _audioPlayer.positionStream.listen((pos) {
       if (mounted) {
         setState(() => _position = pos);
       }
     });
 
     // Listen to duration
-    _audioPlayer.onDurationChanged.listen((dur) {
+    _audioPlayer.durationStream.listen((dur) {
       if (mounted) {
-        setState(() => _duration = dur);
+        setState(() => _duration = dur ?? Duration.zero);
       }
     });
   }
@@ -179,21 +188,22 @@ class _YouTubeDebugScreenState extends State<YouTubeDebugScreen> {
 
     setState(() {
       _isLoading = true;
-      _status = '🔄 Extracting audio stream...';
+      _status = '🔄 Downloading audio stream...';
     });
 
     try {
-      // Step 1: Extract playable URL
-      final playableUrl = await _ytHandler.getPlayableAudioUrl(url);
+      // Step 1: Download audio
+      final localPath = await _ytHandler.downloadAudio(url);
 
-      setState(() => _status = '🎵 Got stream URL, initializing player...');
+      setState(() => _status = '🎵 Playing from local file...');
 
-      // Step 2: Play the extracted URL
-      await _audioPlayer.play(UrlSource(playableUrl));
+      // Step 2: Play from local file
+      await _audioPlayer.setFilePath(localPath);
+      await _audioPlayer.play();
 
       setState(() {
         _isLoading = false;
-        _status = '✅ Playing MP4 Stream!';
+        _status = '✅ Playing!';
       });
     } catch (e) {
       setState(() {
@@ -259,7 +269,7 @@ class _YouTubeDebugScreenState extends State<YouTubeDebugScreen> {
 
                 // Status Card
                 Card(
-                  color: Colors.white.withOpacity(0.1),
+                  color: Colors.white.withValues(alpha: 0.1),
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
                     child: Column(
@@ -270,11 +280,11 @@ class _YouTubeDebugScreenState extends State<YouTubeDebugScreen> {
                           )
                         else
                           Icon(
-                            _playerState == PlayerState.playing
+                            _isPlaying
                                 ? Icons.play_circle_filled
                                 : Icons.stop_circle,
                             size: 48,
-                            color: _playerState == PlayerState.playing
+                            color: _isPlaying
                                 ? Colors.greenAccent
                                 : Colors.white54,
                           ),
@@ -290,7 +300,7 @@ class _YouTubeDebugScreenState extends State<YouTubeDebugScreen> {
                           textAlign: TextAlign.center,
                         ),
 
-                        if (_playerState == PlayerState.playing) ...[
+                        if (_isPlaying) ...[
                           const SizedBox(height: 16),
                           Text(
                             '${_formatDuration(_position)} / ${_formatDuration(_duration)}',
@@ -330,7 +340,7 @@ class _YouTubeDebugScreenState extends State<YouTubeDebugScreen> {
                       color: Colors.cyanAccent,
                     ),
                     filled: true,
-                    fillColor: Colors.white.withOpacity(0.1),
+                    fillColor: Colors.white.withValues(alpha: 0.1),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none,
@@ -362,7 +372,7 @@ class _YouTubeDebugScreenState extends State<YouTubeDebugScreen> {
                 const SizedBox(height: 16),
 
                 // Playback Controls
-                if (_playerState != PlayerState.stopped) ...[
+                if (_isPlaying || _position > Duration.zero) ...[
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -375,14 +385,14 @@ class _YouTubeDebugScreenState extends State<YouTubeDebugScreen> {
                       const SizedBox(width: 24),
                       IconButton(
                         onPressed: () {
-                          if (_playerState == PlayerState.playing) {
+                          if (_isPlaying) {
                             _audioPlayer.pause();
                           } else {
-                            _audioPlayer.resume();
+                            _audioPlayer.play();
                           }
                         },
                         icon: Icon(
-                          _playerState == PlayerState.playing
+                          _isPlaying
                               ? Icons.pause_circle_filled
                               : Icons.play_circle_filled,
                         ),
@@ -399,9 +409,11 @@ class _YouTubeDebugScreenState extends State<YouTubeDebugScreen> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.amber.withOpacity(0.1),
+                    color: Colors.amber.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                    border: Border.all(
+                      color: Colors.amber.withValues(alpha: 0.3),
+                    ),
                   ),
                   child: const Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -428,7 +440,7 @@ class _YouTubeDebugScreenState extends State<YouTubeDebugScreen> {
                         '1. Paste a YouTube URL\n'
                         '2. Click "DEBUG PLAY"\n'
                         '3. Check the console logs\n'
-                        '4. Verify MP4/M4A stream is selected',
+                        '4. Using just_audio with local file download',
                         style: TextStyle(color: Colors.white70, fontSize: 12),
                       ),
                     ],

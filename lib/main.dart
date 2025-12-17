@@ -5,7 +5,7 @@ import 'core/theme_provider.dart';
 import 'core/feature_registry.dart';
 import 'core/auth_provider.dart';
 import 'core/localization/app_localization.dart';
-import 'core/update/update_manager.dart';
+import 'core/background_audio_handler.dart';
 import 'features/music_carousel/music_carousel_feature.dart';
 import 'features/music_carousel/music_service.dart';
 import 'features/music_carousel/music_player_service.dart';
@@ -14,15 +14,12 @@ import 'features/auth/auth_service.dart';
 import 'features/auth/login_screen.dart';
 import 'main_screen.dart';
 
-void main() {
+Future<void> main() async {
   // Initialize the app
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Thiết lập URL kiểm tra cập nhật
-  // Thay đổi URL này thành file JSON của bạn trên GitHub hoặc API endpoint
-  UpdateManager().setVersionCheckUrl(
-    'https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/version.json',
-  );
+  // Initialize Background Audio Service
+  await initAudioService();
 
   // Set preferred orientations
   SystemChrome.setPreferredOrientations([
@@ -103,7 +100,10 @@ class _GalaxyMusicAppState extends State<GalaxyMusicApp> {
             child: MusicPlayerServiceProvider(
               playerService: playerService,
               child: ListenableBuilder(
-                listenable: Listenable.merge([localizationController, themeController]),
+                listenable: Listenable.merge([
+                  localizationController,
+                  themeController,
+                ]),
                 builder: (context, child) {
                   return MaterialApp(
                     title: 'Mizz',
@@ -113,7 +113,7 @@ class _GalaxyMusicAppState extends State<GalaxyMusicApp> {
                       listenable: authService,
                       builder: (context, child) {
                         if (authService.isAuthenticated) {
-                          return const MainScreenWithUpdate();
+                          return const MainScreen();
                         }
                         return LoginScreen(authService: authService);
                       },
@@ -126,33 +126,5 @@ class _GalaxyMusicAppState extends State<GalaxyMusicApp> {
         ),
       ),
     );
-  }
-}
-
-/// Wrapper để kiểm tra cập nhật khi vào MainScreen
-class MainScreenWithUpdate extends StatefulWidget {
-  const MainScreenWithUpdate({super.key});
-
-  @override
-  State<MainScreenWithUpdate> createState() => _MainScreenWithUpdateState();
-}
-
-class _MainScreenWithUpdateState extends State<MainScreenWithUpdate> {
-  @override
-  void initState() {
-    super.initState();
-    // Kiểm tra cập nhật khi màn hình được khởi tạo
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkForUpdate();
-    });
-  }
-
-  Future<void> _checkForUpdate() async {
-    await UpdateManager().checkAndShowUpdateDialog(context);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return const MainScreen();
   }
 }

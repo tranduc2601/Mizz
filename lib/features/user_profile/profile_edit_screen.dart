@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../core/theme.dart';
+import '../../core/theme_provider.dart';
+import '../../core/localization/app_localization.dart';
 import '../../core/animated_background.dart';
 import '../auth/auth_service.dart';
 
@@ -115,9 +117,11 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   }
 
   void _showAvatarOptions() {
+    final colors = ThemeProvider.colorsOf(context);
+    final l10n = AppLocalizations.of(context);
     showModalBottomSheet(
       context: context,
-      backgroundColor: GalaxyTheme.deepSpace,
+      backgroundColor: colors.deepSpace,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -126,9 +130,9 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              'Choose Avatar',
-              style: TextStyle(
+            Text(
+              l10n.changeAvatar,
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -136,13 +140,10 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
             ),
             const SizedBox(height: 20),
             ListTile(
-              leading: const Icon(
-                Icons.photo_library,
-                color: GalaxyTheme.cyberpunkCyan,
-              ),
-              title: const Text(
-                'Choose from Gallery',
-                style: TextStyle(color: Colors.white),
+              leading: Icon(Icons.photo_library, color: colors.accentCyan),
+              title: Text(
+                l10n.chooseFromGallery,
+                style: const TextStyle(color: Colors.white),
               ),
               onTap: () {
                 Navigator.pop(context);
@@ -150,13 +151,10 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
               },
             ),
             ListTile(
-              leading: const Icon(
-                Icons.camera_alt,
-                color: GalaxyTheme.cyberpunkPink,
-              ),
-              title: const Text(
-                'Take Photo',
-                style: TextStyle(color: Colors.white),
+              leading: Icon(Icons.camera_alt, color: colors.accentPink),
+              title: Text(
+                l10n.takePhoto,
+                style: const TextStyle(color: Colors.white),
               ),
               onTap: () {
                 Navigator.pop(context);
@@ -166,9 +164,9 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
             if (_localAvatarPath != null)
               ListTile(
                 leading: const Icon(Icons.delete, color: Colors.red),
-                title: const Text(
-                  'Remove Avatar',
-                  style: TextStyle(color: Colors.white),
+                title: Text(
+                  l10n.removeAvatar,
+                  style: const TextStyle(color: Colors.white),
                 ),
                 onTap: () {
                   Navigator.pop(context);
@@ -204,10 +202,11 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
 
     if (!mounted) return;
 
+    final l10n = AppLocalizations.of(context);
     if (success) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Profile updated successfully'),
+        SnackBar(
+          content: Text(l10n.profileUpdatedSuccess),
           backgroundColor: Colors.green,
         ),
       );
@@ -215,7 +214,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(widget.authService.error ?? 'Failed to update profile'),
+          content: Text(widget.authService.error ?? l10n.errorOccurred),
           backgroundColor: Colors.red,
         ),
       );
@@ -224,6 +223,8 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = ThemeProvider.colorsOf(context);
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       body: AnimatedGalaxyBackground(
         child: SafeArea(
@@ -240,15 +241,12 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                     ),
                     const SizedBox(width: 8),
                     ShaderMask(
-                      shaderCallback: (bounds) => const LinearGradient(
-                        colors: [
-                          GalaxyTheme.cyberpunkPink,
-                          GalaxyTheme.cyberpunkCyan,
-                        ],
+                      shaderCallback: (bounds) => LinearGradient(
+                        colors: [colors.accentPink, colors.accentCyan],
                       ).createShader(bounds),
-                      child: const Text(
-                        'Edit Profile',
-                        style: TextStyle(
+                      child: Text(
+                        l10n.editProfile,
+                        style: const TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
@@ -267,7 +265,6 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                     key: _formKey,
                     child: Column(
                       children: [
-                        // Avatar Preview with upload button
                         GestureDetector(
                           onTap: _showAvatarOptions,
                           child: Stack(
@@ -279,13 +276,12 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
                                   border: Border.all(
-                                    color: GalaxyTheme.cyberpunkCyan,
+                                    color: colors.accentCyan,
                                     width: 3,
                                   ),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: GalaxyTheme.cyberpunkCyan
-                                          .withOpacity(0.5),
+                                      color: colors.accentCyan.withOpacity(0.5),
                                       blurRadius: 20,
                                       spreadRadius: 5,
                                     ),
@@ -301,8 +297,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                                           errorBuilder:
                                               (context, error, stackTrace) {
                                                 return Container(
-                                                  color:
-                                                      GalaxyTheme.cosmicViolet,
+                                                  color: colors.cosmicAccent,
                                                   child: const Icon(
                                                     Icons.person,
                                                     size: 60,
@@ -312,7 +307,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                                               },
                                         )
                                       : Container(
-                                          color: GalaxyTheme.cosmicViolet,
+                                          color: colors.cosmicAccent,
                                           child: const Icon(
                                             Icons.person,
                                             size: 60,
@@ -328,14 +323,14 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                                   padding: const EdgeInsets.all(8),
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
-                                    gradient: const LinearGradient(
+                                    gradient: LinearGradient(
                                       colors: [
-                                        GalaxyTheme.cyberpunkPink,
-                                        GalaxyTheme.cyberpunkCyan,
+                                        colors.accentPink,
+                                        colors.accentCyan,
                                       ],
                                     ),
                                     border: Border.all(
-                                      color: GalaxyTheme.deepSpace,
+                                      color: colors.deepSpace,
                                       width: 2,
                                     ),
                                   ),
@@ -353,7 +348,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                         const SizedBox(height: 12),
 
                         Text(
-                          'Tap to change avatar',
+                          l10n.tapToAddImage,
                           style: TextStyle(
                             color: Colors.white.withOpacity(0.6),
                             fontSize: 12,
@@ -375,13 +370,13 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                                 style: const TextStyle(color: Colors.white),
                                 keyboardType: TextInputType.emailAddress,
                                 decoration: InputDecoration(
-                                  labelText: 'Email',
+                                  labelText: l10n.email,
                                   labelStyle: TextStyle(
                                     color: Colors.white.withOpacity(0.7),
                                   ),
-                                  prefixIcon: const Icon(
+                                  prefixIcon: Icon(
                                     Icons.email_outlined,
-                                    color: GalaxyTheme.auroraGreen,
+                                    color: colors.auroraGreen,
                                   ),
                                   enabledBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(15),
@@ -391,8 +386,8 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                                   ),
                                   focusedBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(15),
-                                    borderSide: const BorderSide(
-                                      color: GalaxyTheme.auroraGreen,
+                                    borderSide: BorderSide(
+                                      color: colors.auroraGreen,
                                       width: 2,
                                     ),
                                   ),
@@ -412,11 +407,11 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                                 ),
                                 validator: (value) {
                                   if (value == null || value.isEmpty) {
-                                    return 'Please enter your email';
+                                    return l10n.enterEmail;
                                   }
                                   if (!value.contains('@') ||
                                       !value.contains('.')) {
-                                    return 'Please enter a valid email';
+                                    return l10n.invalidEmail;
                                   }
                                   return null;
                                 },
@@ -429,13 +424,13 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                                 controller: _nameController,
                                 style: const TextStyle(color: Colors.white),
                                 decoration: InputDecoration(
-                                  labelText: 'Full Name',
+                                  labelText: l10n.name,
                                   labelStyle: TextStyle(
                                     color: Colors.white.withOpacity(0.7),
                                   ),
-                                  prefixIcon: const Icon(
+                                  prefixIcon: Icon(
                                     Icons.person_outlined,
-                                    color: GalaxyTheme.cyberpunkCyan,
+                                    color: colors.accentCyan,
                                   ),
                                   enabledBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(15),
@@ -445,8 +440,8 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                                   ),
                                   focusedBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(15),
-                                    borderSide: const BorderSide(
-                                      color: GalaxyTheme.cyberpunkCyan,
+                                    borderSide: BorderSide(
+                                      color: colors.accentCyan,
                                       width: 2,
                                     ),
                                   ),
@@ -466,10 +461,10 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                                 ),
                                 validator: (value) {
                                   if (value == null || value.isEmpty) {
-                                    return 'Please enter your name';
+                                    return l10n.enterName;
                                   }
                                   if (value.length < 2) {
-                                    return 'Name must be at least 2 characters';
+                                    return l10n.fieldRequired;
                                   }
                                   return null;
                                 },
@@ -492,10 +487,10 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                                 ),
                                 child: Ink(
                                   decoration: BoxDecoration(
-                                    gradient: const LinearGradient(
+                                    gradient: LinearGradient(
                                       colors: [
-                                        GalaxyTheme.cyberpunkPink,
-                                        GalaxyTheme.cyberpunkCyan,
+                                        colors.accentPink,
+                                        colors.accentCyan,
                                       ],
                                     ),
                                     borderRadius: BorderRadius.circular(15),
@@ -514,9 +509,9 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                                               strokeWidth: 2,
                                             ),
                                           )
-                                        : const Text(
-                                            'SAVE CHANGES',
-                                            style: TextStyle(
+                                        : Text(
+                                            l10n.save.toUpperCase(),
+                                            style: const TextStyle(
                                               fontSize: 16,
                                               fontWeight: FontWeight.bold,
                                               color: Colors.white,

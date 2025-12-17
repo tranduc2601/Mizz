@@ -5,13 +5,17 @@ import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'core/theme.dart';
+import 'core/theme_provider.dart';
 import 'core/feature_registry.dart';
 import 'core/animated_background.dart';
 import 'core/auth_provider.dart';
 import 'core/settings/settings_screen.dart';
+import 'core/localization/app_localization.dart';
+import 'core/youtube_download_service.dart';
 import 'features/user_profile/user_profile_view_enhanced.dart';
 import 'features/music_carousel/music_service.dart';
 import 'features/listening_history/listening_history_screen.dart';
+import 'features/library/song_list_screen.dart';
 
 /// Main Screen - The layout skeleton
 ///
@@ -74,6 +78,9 @@ class MainScreen extends StatelessWidget {
     BuildContext context,
     GlobalKey<ScaffoldState> scaffoldKey,
   ) {
+    // Get dynamic colors from theme provider
+    final colors = ThemeProvider.colorsOf(context);
+
     return SafeArea(
       child: Container(
         margin: const EdgeInsets.all(16),
@@ -82,17 +89,14 @@ class MainScreen extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           gradient: LinearGradient(
             colors: [
-              GalaxyTheme.nebulaPurple.withOpacity(0.3),
-              GalaxyTheme.cosmicViolet.withOpacity(0.2),
+              colors.nebulaPrimary.withOpacity(0.3),
+              colors.cosmicAccent.withOpacity(0.2),
             ],
           ),
-          border: Border.all(
-            color: GalaxyTheme.moonGlow.withOpacity(0.2),
-            width: 1,
-          ),
+          border: Border.all(color: colors.moonGlow.withOpacity(0.2), width: 1),
           boxShadow: [
             BoxShadow(
-              color: GalaxyTheme.cosmicViolet.withOpacity(0.3),
+              color: colors.cosmicAccent.withOpacity(0.3),
               blurRadius: 20,
               spreadRadius: 5,
             ),
@@ -107,7 +111,7 @@ class MainScreen extends StatelessWidget {
               children: [
                 // Hamburger Menu
                 IconButton(
-                  icon: const Icon(Icons.menu, color: GalaxyTheme.moonGlow),
+                  icon: Icon(Icons.menu, color: colors.moonGlow),
                   onPressed: () {
                     scaffoldKey.currentState?.openDrawer();
                   },
@@ -135,21 +139,21 @@ class MainScreen extends StatelessWidget {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: GalaxyTheme.stardustPink.withOpacity(0.5),
+                        color: colors.stardustPink.withOpacity(0.5),
                         width: 2,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: GalaxyTheme.stardustPink.withOpacity(0.3),
+                          color: colors.stardustPink.withOpacity(0.3),
                           blurRadius: 10,
                           spreadRadius: 2,
                         ),
                       ],
                     ),
-                    child: const CircleAvatar(
+                    child: CircleAvatar(
                       radius: 20,
-                      backgroundColor: GalaxyTheme.cosmicViolet,
-                      child: Text('🎵', style: TextStyle(fontSize: 20)),
+                      backgroundColor: colors.cosmicAccent,
+                      child: const Text('🎵', style: TextStyle(fontSize: 20)),
                     ),
                   ),
                 ),
@@ -163,9 +167,23 @@ class MainScreen extends StatelessWidget {
 
   /// Left Drawer - Menu
   Widget _buildMenuDrawer(BuildContext context) {
+    // Get dynamic colors and localization
+    final colors = ThemeProvider.colorsOf(context);
+    final l10n = AppLocalizations.of(context);
+
     return Drawer(
       child: Container(
-        decoration: BoxDecoration(gradient: GalaxyTheme.galaxyGradient),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              colors.deepSpace,
+              colors.nebulaPrimary,
+              colors.cosmicAccent.withOpacity(0.6),
+            ],
+          ),
+        ),
         child: SafeArea(
           child: ListView(
             padding: EdgeInsets.zero,
@@ -176,41 +194,37 @@ class MainScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(
-                      Icons.music_note,
-                      size: 50,
-                      color: GalaxyTheme.auroraGreen,
-                    ),
+                    Icon(Icons.music_note, size: 50, color: colors.auroraGreen),
                     const SizedBox(height: 16),
                     Text(
-                      'Mizz',
+                      l10n.appName,
                       style: Theme.of(context).textTheme.displayMedium
                           ?.copyWith(fontSize: 24, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Your Music, Your Way',
+                      l10n.yourMusicYourWay,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: GalaxyTheme.moonGlow.withOpacity(0.7),
+                        color: colors.moonGlow.withOpacity(0.7),
                       ),
                     ),
                   ],
                 ),
               ),
 
-              const Divider(color: GalaxyTheme.moonGlow, thickness: 0.5),
+              Divider(color: colors.moonGlow, thickness: 0.5),
 
               // Menu Items
               _buildMenuItem(
                 context,
                 icon: Icons.home,
-                title: 'Home',
+                title: l10n.home,
                 onTap: () => Navigator.pop(context),
               ),
               _buildMenuItem(
                 context,
                 icon: Icons.add_circle_outline,
-                title: 'Add New Song',
+                title: l10n.addNewSong,
                 onTap: () {
                   Navigator.pop(context);
                   _showAddSongDialog(context);
@@ -219,25 +233,45 @@ class MainScreen extends StatelessWidget {
               _buildMenuItem(
                 context,
                 icon: Icons.library_music,
-                title: 'My Library',
-                onTap: () => Navigator.pop(context),
+                title: l10n.myLibrary,
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => SongListScreen.library()),
+                  );
+                },
               ),
               _buildMenuItem(
                 context,
                 icon: Icons.playlist_play,
-                title: 'Playlists',
-                onTap: () => Navigator.pop(context),
+                title: l10n.playlists,
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const PlaylistsScreen()),
+                  );
+                },
               ),
               _buildMenuItem(
                 context,
                 icon: Icons.favorite,
-                title: 'Favorites',
-                onTap: () => Navigator.pop(context),
+                title: l10n.favorites,
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => SongListScreen.favorites(),
+                    ),
+                  );
+                },
               ),
               _buildMenuItem(
                 context,
                 icon: Icons.history,
-                title: 'Recently Played',
+                title: l10n.recentlyPlayed,
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.push(
@@ -249,12 +283,12 @@ class MainScreen extends StatelessWidget {
                 },
               ),
 
-              const Divider(color: GalaxyTheme.moonGlow, thickness: 0.5),
+              Divider(color: colors.moonGlow, thickness: 0.5),
 
               _buildMenuItem(
                 context,
                 icon: Icons.settings,
-                title: 'Settings',
+                title: l10n.settings,
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.push(
@@ -268,7 +302,7 @@ class MainScreen extends StatelessWidget {
               _buildMenuItem(
                 context,
                 icon: Icons.info_outline,
-                title: 'About',
+                title: l10n.about,
                 onTap: () => Navigator.pop(context),
               ),
             ],
@@ -287,6 +321,10 @@ class MainScreen extends StatelessWidget {
     String? musicFilePath;
     String sourceType = 'link'; // 'link' or 'file'
 
+    // Get dynamic colors and localization
+    final colors = ThemeProvider.colorsOf(context);
+    final l10n = AppLocalizations.of(context);
+
     showDialog(
       context: context,
       builder: (BuildContext dialogContext) {
@@ -302,12 +340,12 @@ class MainScreen extends StatelessWidget {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      GalaxyTheme.nebulaPurple.withOpacity(0.9),
-                      GalaxyTheme.cosmicViolet.withOpacity(0.9),
+                      colors.nebulaPrimary.withOpacity(0.9),
+                      colors.cosmicAccent.withOpacity(0.9),
                     ],
                   ),
                   border: Border.all(
-                    color: GalaxyTheme.moonGlow.withOpacity(0.3),
+                    color: colors.moonGlow.withOpacity(0.3),
                     width: 1,
                   ),
                 ),
@@ -320,7 +358,7 @@ class MainScreen extends StatelessWidget {
                       children: [
                         // Title
                         Text(
-                          'Add New Song',
+                          l10n.addNewSong,
                           style: Theme.of(context).textTheme.displayMedium
                               ?.copyWith(
                                 fontSize: 24,
@@ -331,7 +369,7 @@ class MainScreen extends StatelessWidget {
 
                         // Image picker (optional)
                         Text(
-                          'Cover Image (Optional)',
+                          '${l10n.coverImage} (${l10n.cancel})',
                           style: Theme.of(context).textTheme.bodyLarge,
                         ),
                         const SizedBox(height: 8),
@@ -339,10 +377,10 @@ class MainScreen extends StatelessWidget {
                           width: double.infinity,
                           height: 150,
                           decoration: BoxDecoration(
-                            color: GalaxyTheme.deepSpace.withOpacity(0.3),
+                            color: colors.deepSpace.withOpacity(0.3),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: GalaxyTheme.moonGlow.withOpacity(0.2),
+                              color: colors.moonGlow.withOpacity(0.2),
                             ),
                           ),
                           child: imagePath == null
@@ -365,18 +403,16 @@ class MainScreen extends StatelessWidget {
                                       Icon(
                                         Icons.add_photo_alternate,
                                         size: 48,
-                                        color: GalaxyTheme.moonGlow.withOpacity(
-                                          0.5,
-                                        ),
+                                        color: colors.moonGlow.withOpacity(0.5),
                                       ),
                                       const SizedBox(height: 8),
                                       Text(
-                                        'Tap to add image',
+                                        l10n.tapToAddImage,
                                         style: Theme.of(context)
                                             .textTheme
                                             .bodyMedium
                                             ?.copyWith(
-                                              color: GalaxyTheme.moonGlow
+                                              color: colors.moonGlow
                                                   .withOpacity(0.5),
                                             ),
                                       ),
@@ -399,7 +435,7 @@ class MainScreen extends StatelessWidget {
                                       right: 8,
                                       child: IconButton(
                                         icon: const Icon(Icons.close),
-                                        color: GalaxyTheme.moonGlow,
+                                        color: colors.moonGlow,
                                         style: IconButton.styleFrom(
                                           backgroundColor: Colors.black54,
                                         ),
@@ -417,37 +453,35 @@ class MainScreen extends StatelessWidget {
 
                         // Song name
                         Text(
-                          'Song Name *',
+                          '${l10n.songName} *',
                           style: Theme.of(context).textTheme.bodyLarge,
                         ),
                         const SizedBox(height: 8),
                         TextField(
                           controller: nameController,
-                          style: const TextStyle(color: GalaxyTheme.moonGlow),
+                          style: TextStyle(color: colors.moonGlow),
                           decoration: InputDecoration(
-                            hintText: 'Enter song name',
+                            hintText: l10n.enterSongName,
                             hintStyle: TextStyle(
-                              color: GalaxyTheme.moonGlow.withOpacity(0.5),
+                              color: colors.moonGlow.withOpacity(0.5),
                             ),
                             filled: true,
-                            fillColor: GalaxyTheme.deepSpace.withOpacity(0.3),
+                            fillColor: colors.deepSpace.withOpacity(0.3),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                               borderSide: BorderSide(
-                                color: GalaxyTheme.moonGlow.withOpacity(0.2),
+                                color: colors.moonGlow.withOpacity(0.2),
                               ),
                             ),
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                               borderSide: BorderSide(
-                                color: GalaxyTheme.moonGlow.withOpacity(0.2),
+                                color: colors.moonGlow.withOpacity(0.2),
                               ),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(
-                                color: GalaxyTheme.auroraGreen,
-                              ),
+                              borderSide: BorderSide(color: colors.auroraGreen),
                             ),
                           ),
                         ),
@@ -455,37 +489,35 @@ class MainScreen extends StatelessWidget {
 
                         // Artist name
                         Text(
-                          'Artist Name',
+                          l10n.artist,
                           style: Theme.of(context).textTheme.bodyLarge,
                         ),
                         const SizedBox(height: 8),
                         TextField(
                           controller: artistController,
-                          style: const TextStyle(color: GalaxyTheme.moonGlow),
+                          style: TextStyle(color: colors.moonGlow),
                           decoration: InputDecoration(
-                            hintText: 'Enter artist name',
+                            hintText: l10n.enterArtist,
                             hintStyle: TextStyle(
-                              color: GalaxyTheme.moonGlow.withOpacity(0.5),
+                              color: colors.moonGlow.withOpacity(0.5),
                             ),
                             filled: true,
-                            fillColor: GalaxyTheme.deepSpace.withOpacity(0.3),
+                            fillColor: colors.deepSpace.withOpacity(0.3),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                               borderSide: BorderSide(
-                                color: GalaxyTheme.moonGlow.withOpacity(0.2),
+                                color: colors.moonGlow.withOpacity(0.2),
                               ),
                             ),
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                               borderSide: BorderSide(
-                                color: GalaxyTheme.moonGlow.withOpacity(0.2),
+                                color: colors.moonGlow.withOpacity(0.2),
                               ),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(
-                                color: GalaxyTheme.auroraGreen,
-                              ),
+                              borderSide: BorderSide(color: colors.auroraGreen),
                             ),
                           ),
                         ),
@@ -493,7 +525,7 @@ class MainScreen extends StatelessWidget {
 
                         // Music Source Type Selector
                         Text(
-                          'Music Source *',
+                          '${l10n.musicSource} *',
                           style: Theme.of(context).textTheme.bodyLarge,
                         ),
                         const SizedBox(height: 8),
@@ -501,10 +533,10 @@ class MainScreen extends StatelessWidget {
                         // Source type tabs
                         Container(
                           decoration: BoxDecoration(
-                            color: GalaxyTheme.deepSpace.withOpacity(0.3),
+                            color: colors.deepSpace.withOpacity(0.3),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: GalaxyTheme.moonGlow.withOpacity(0.2),
+                              color: colors.moonGlow.withOpacity(0.2),
                             ),
                           ),
                           child: Row(
@@ -523,9 +555,7 @@ class MainScreen extends StatelessWidget {
                                     ),
                                     decoration: BoxDecoration(
                                       color: sourceType == 'link'
-                                          ? GalaxyTheme.auroraGreen.withOpacity(
-                                              0.3,
-                                            )
+                                          ? colors.auroraGreen.withOpacity(0.3)
                                           : Colors.transparent,
                                       borderRadius: BorderRadius.circular(12),
                                     ),
@@ -536,19 +566,21 @@ class MainScreen extends StatelessWidget {
                                         Icon(
                                           Icons.link,
                                           color: sourceType == 'link'
-                                              ? GalaxyTheme.auroraGreen
-                                              : GalaxyTheme.moonGlow
-                                                    .withOpacity(0.5),
+                                              ? colors.auroraGreen
+                                              : colors.moonGlow.withOpacity(
+                                                  0.5,
+                                                ),
                                           size: 20,
                                         ),
                                         const SizedBox(width: 8),
                                         Text(
-                                          'Link',
+                                          l10n.link,
                                           style: TextStyle(
                                             color: sourceType == 'link'
-                                                ? GalaxyTheme.auroraGreen
-                                                : GalaxyTheme.moonGlow
-                                                      .withOpacity(0.5),
+                                                ? colors.auroraGreen
+                                                : colors.moonGlow.withOpacity(
+                                                    0.5,
+                                                  ),
                                             fontWeight: sourceType == 'link'
                                                 ? FontWeight.bold
                                                 : FontWeight.normal,
@@ -573,8 +605,7 @@ class MainScreen extends StatelessWidget {
                                     ),
                                     decoration: BoxDecoration(
                                       color: sourceType == 'file'
-                                          ? GalaxyTheme.cyberpunkCyan
-                                                .withOpacity(0.3)
+                                          ? colors.accentCyan.withOpacity(0.3)
                                           : Colors.transparent,
                                       borderRadius: BorderRadius.circular(12),
                                     ),
@@ -585,19 +616,21 @@ class MainScreen extends StatelessWidget {
                                         Icon(
                                           Icons.upload_file,
                                           color: sourceType == 'file'
-                                              ? GalaxyTheme.cyberpunkCyan
-                                              : GalaxyTheme.moonGlow
-                                                    .withOpacity(0.5),
+                                              ? colors.accentCyan
+                                              : colors.moonGlow.withOpacity(
+                                                  0.5,
+                                                ),
                                           size: 20,
                                         ),
                                         const SizedBox(width: 8),
                                         Text(
-                                          'Upload File',
+                                          l10n.uploadFile,
                                           style: TextStyle(
                                             color: sourceType == 'file'
-                                                ? GalaxyTheme.cyberpunkCyan
-                                                : GalaxyTheme.moonGlow
-                                                      .withOpacity(0.5),
+                                                ? colors.accentCyan
+                                                : colors.moonGlow.withOpacity(
+                                                    0.5,
+                                                  ),
                                             fontWeight: sourceType == 'file'
                                                 ? FontWeight.bold
                                                 : FontWeight.normal,
@@ -617,37 +650,36 @@ class MainScreen extends StatelessWidget {
                         if (sourceType == 'link')
                           TextField(
                             controller: linkController,
-                            style: const TextStyle(color: GalaxyTheme.moonGlow),
+                            style: TextStyle(color: colors.moonGlow),
                             maxLines: 2,
                             decoration: InputDecoration(
-                              hintText:
-                                  'Paste YouTube, TikTok, or other music link',
+                              hintText: l10n.enterMusicUrl,
                               hintStyle: TextStyle(
-                                color: GalaxyTheme.moonGlow.withOpacity(0.5),
+                                color: colors.moonGlow.withOpacity(0.5),
                               ),
                               filled: true,
-                              fillColor: GalaxyTheme.deepSpace.withOpacity(0.3),
+                              fillColor: colors.deepSpace.withOpacity(0.3),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
                                 borderSide: BorderSide(
-                                  color: GalaxyTheme.moonGlow.withOpacity(0.2),
+                                  color: colors.moonGlow.withOpacity(0.2),
                                 ),
                               ),
                               enabledBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
                                 borderSide: BorderSide(
-                                  color: GalaxyTheme.moonGlow.withOpacity(0.2),
+                                  color: colors.moonGlow.withOpacity(0.2),
                                 ),
                               ),
                               focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                borderSide: const BorderSide(
-                                  color: GalaxyTheme.auroraGreen,
+                                borderSide: BorderSide(
+                                  color: colors.auroraGreen,
                                 ),
                               ),
-                              prefixIcon: const Icon(
+                              prefixIcon: Icon(
                                 Icons.link,
-                                color: GalaxyTheme.auroraGreen,
+                                color: colors.auroraGreen,
                               ),
                             ),
                           )
@@ -666,12 +698,11 @@ class MainScreen extends StatelessWidget {
                                       ScaffoldMessenger.of(
                                         context,
                                       ).showSnackBar(
-                                        const SnackBar(
+                                        SnackBar(
                                           content: Text(
-                                            'Storage permission is required to upload music files',
+                                            l10n.storagePermissionRequired,
                                           ),
-                                          backgroundColor:
-                                              GalaxyTheme.stardustPink,
+                                          backgroundColor: colors.stardustPink,
                                         ),
                                       );
                                     }
@@ -710,12 +741,12 @@ class MainScreen extends StatelessWidget {
                             child: Container(
                               padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
-                                color: GalaxyTheme.deepSpace.withOpacity(0.3),
+                                color: colors.deepSpace.withOpacity(0.3),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
                                   color: musicFilePath != null
-                                      ? GalaxyTheme.cyberpunkCyan
-                                      : GalaxyTheme.moonGlow.withOpacity(0.2),
+                                      ? colors.accentCyan
+                                      : colors.moonGlow.withOpacity(0.2),
                                   width: musicFilePath != null ? 2 : 1,
                                 ),
                               ),
@@ -726,8 +757,8 @@ class MainScreen extends StatelessWidget {
                                         ? Icons.audiotrack
                                         : Icons.upload_file,
                                     color: musicFilePath != null
-                                        ? GalaxyTheme.cyberpunkCyan
-                                        : GalaxyTheme.moonGlow.withOpacity(0.5),
+                                        ? colors.accentCyan
+                                        : colors.moonGlow.withOpacity(0.5),
                                     size: 32,
                                   ),
                                   const SizedBox(width: 16),
@@ -738,15 +769,15 @@ class MainScreen extends StatelessWidget {
                                       children: [
                                         Text(
                                           musicFilePath != null
-                                              ? 'File selected'
-                                              : 'Tap to upload MP3/MP4 file',
+                                              ? l10n.fileSelected
+                                              : l10n.tapToUploadFile,
                                           style: Theme.of(context)
                                               .textTheme
                                               .bodyLarge
                                               ?.copyWith(
                                                 color: musicFilePath != null
-                                                    ? GalaxyTheme.cyberpunkCyan
-                                                    : GalaxyTheme.moonGlow
+                                                    ? colors.accentCyan
+                                                    : colors.moonGlow
                                                           .withOpacity(0.7),
                                               ),
                                         ),
@@ -758,7 +789,7 @@ class MainScreen extends StatelessWidget {
                                                 .textTheme
                                                 .bodySmall
                                                 ?.copyWith(
-                                                  color: GalaxyTheme.moonGlow
+                                                  color: colors.moonGlow
                                                       .withOpacity(0.5),
                                                 ),
                                             maxLines: 1,
@@ -771,7 +802,7 @@ class MainScreen extends StatelessWidget {
                                   if (musicFilePath != null)
                                     IconButton(
                                       icon: const Icon(Icons.close),
-                                      color: GalaxyTheme.moonGlow,
+                                      color: colors.moonGlow,
                                       onPressed: () {
                                         setState(() {
                                           musicFilePath = null;
@@ -794,12 +825,10 @@ class MainScreen extends StatelessWidget {
                                 Navigator.of(dialogContext).pop();
                               },
                               child: Text(
-                                'Cancel',
+                                l10n.cancel,
                                 style: Theme.of(context).textTheme.bodyLarge
                                     ?.copyWith(
-                                      color: GalaxyTheme.moonGlow.withOpacity(
-                                        0.7,
-                                      ),
+                                      color: colors.moonGlow.withOpacity(0.7),
                                     ),
                               ),
                             ),
@@ -811,9 +840,9 @@ class MainScreen extends StatelessWidget {
                                 // Validate based on source type
                                 if (nameController.text.isEmpty) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Please enter song name'),
-                                      backgroundColor: GalaxyTheme.stardustPink,
+                                    SnackBar(
+                                      content: Text(l10n.pleaseEnterSongName),
+                                      backgroundColor: colors.stardustPink,
                                     ),
                                   );
                                   return;
@@ -822,11 +851,9 @@ class MainScreen extends StatelessWidget {
                                 if (sourceType == 'link' &&
                                     linkController.text.isEmpty) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Please enter a music link',
-                                      ),
-                                      backgroundColor: GalaxyTheme.stardustPink,
+                                    SnackBar(
+                                      content: Text(l10n.pleaseEnterMusicLink),
+                                      backgroundColor: colors.stardustPink,
                                     ),
                                   );
                                   return;
@@ -835,11 +862,9 @@ class MainScreen extends StatelessWidget {
                                 if (sourceType == 'file' &&
                                     musicFilePath == null) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Please select a music file',
-                                      ),
-                                      backgroundColor: GalaxyTheme.stardustPink,
+                                    SnackBar(
+                                      content: Text(l10n.pleaseSelectMusicFile),
+                                      backgroundColor: colors.stardustPink,
                                     ),
                                   );
                                   return;
@@ -849,14 +874,19 @@ class MainScreen extends StatelessWidget {
                                 final musicService = MusicServiceProvider.of(
                                   context,
                                 );
-                                musicService.addSong(
-                                  title: nameController.text.trim(),
-                                  artist: artistController.text.trim().isEmpty
-                                      ? 'Unknown Artist'
-                                      : artistController.text.trim(),
-                                  musicSource: sourceType == 'link'
-                                      ? linkController.text.trim()
-                                      : musicFilePath!,
+                                final songSource = sourceType == 'link'
+                                    ? linkController.text.trim()
+                                    : musicFilePath!;
+                                final songTitle = nameController.text.trim();
+                                final songArtist =
+                                    artistController.text.trim().isEmpty
+                                    ? l10n.unknownArtist
+                                    : artistController.text.trim();
+
+                                final songId = musicService.addSong(
+                                  title: songTitle,
+                                  artist: songArtist,
+                                  musicSource: songSource,
                                   albumArt: imagePath,
                                 );
 
@@ -864,15 +894,36 @@ class MainScreen extends StatelessWidget {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: Text(
-                                      'Song "${nameController.text}" added!',
+                                      '${l10n.songAddedSuccess} "$songTitle"',
                                     ),
-                                    backgroundColor: GalaxyTheme.auroraGreen,
+                                    backgroundColor: colors.auroraGreen,
                                   ),
                                 );
+
+                                // Check if it's a YouTube link and offer to download
+                                if (sourceType == 'link' &&
+                                    YouTubeDownloadService().isYouTubeUrl(
+                                      songSource,
+                                    )) {
+                                  // Show download dialog after a short delay
+                                  Future.delayed(
+                                    const Duration(milliseconds: 500),
+                                    () {
+                                      if (context.mounted) {
+                                        _showYouTubeDownloadDialog(
+                                          context,
+                                          songId: songId,
+                                          songTitle: songTitle,
+                                          youtubeUrl: songSource,
+                                        );
+                                      }
+                                    },
+                                  );
+                                }
                               },
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: GalaxyTheme.auroraGreen,
-                                foregroundColor: GalaxyTheme.deepSpace,
+                                backgroundColor: colors.auroraGreen,
+                                foregroundColor: colors.deepSpace,
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 24,
                                   vertical: 12,
@@ -881,12 +932,254 @@ class MainScreen extends StatelessWidget {
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                               ),
-                              child: const Text('Add Song'),
+                              child: Text(l10n.addSong),
                             ),
                           ],
                         ),
                       ],
                     ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// Show dialog asking user if they want to download YouTube audio for faster playback
+  void _showYouTubeDownloadDialog(
+    BuildContext context, {
+    required String songId,
+    required String songTitle,
+    required String youtubeUrl,
+  }) {
+    final colors = ThemeProvider.colorsOf(context);
+    final l10n = AppLocalizations.of(context);
+
+    double downloadProgress = 0.0;
+    String statusMessage = '';
+    bool isDownloading = false;
+    bool downloadComplete = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 400),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      colors.nebulaPrimary.withOpacity(0.95),
+                      colors.cosmicAccent.withOpacity(0.95),
+                    ],
+                  ),
+                  border: Border.all(
+                    color: colors.moonGlow.withOpacity(0.3),
+                    width: 1,
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Icon
+                      Icon(
+                        isDownloading
+                            ? Icons.downloading
+                            : downloadComplete
+                            ? Icons.check_circle
+                            : Icons.download_for_offline,
+                        size: 48,
+                        color: downloadComplete
+                            ? colors.auroraGreen
+                            : colors.accentCyan,
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Title
+                      Text(
+                        downloadComplete
+                            ? l10n.downloadComplete
+                            : isDownloading
+                            ? l10n.downloadingAudio
+                            : l10n.downloadForFasterPlayback,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Description or progress
+                      if (!isDownloading && !downloadComplete)
+                        Text(
+                          l10n.youtubeDownloadDescription,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: colors.moonGlow.withOpacity(0.8),
+                              ),
+                          textAlign: TextAlign.center,
+                        )
+                      else if (isDownloading) ...[
+                        // Progress bar
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: LinearProgressIndicator(
+                            value: downloadProgress,
+                            backgroundColor: colors.deepSpace.withOpacity(0.3),
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              colors.accentCyan,
+                            ),
+                            minHeight: 8,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '${(downloadProgress * 100).toInt()}%',
+                          style: Theme.of(context).textTheme.bodyLarge
+                              ?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: colors.accentCyan,
+                              ),
+                        ),
+                        if (statusMessage.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            statusMessage,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: colors.moonGlow.withOpacity(0.6),
+                                ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ] else if (downloadComplete)
+                        Text(
+                          l10n.downloadCompleteDescription,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: colors.auroraGreen),
+                          textAlign: TextAlign.center,
+                        ),
+
+                      const SizedBox(height: 24),
+
+                      // Buttons
+                      if (!isDownloading && !downloadComplete)
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            // Skip button
+                            TextButton(
+                              onPressed: () =>
+                                  Navigator.of(dialogContext).pop(),
+                              child: Text(
+                                l10n.skipForNow,
+                                style: TextStyle(
+                                  color: colors.moonGlow.withOpacity(0.7),
+                                ),
+                              ),
+                            ),
+                            // Download button
+                            ElevatedButton.icon(
+                              onPressed: () async {
+                                setState(() {
+                                  isDownloading = true;
+                                  downloadProgress = 0;
+                                  statusMessage = '';
+                                });
+
+                                final downloadService =
+                                    YouTubeDownloadService();
+                                final localPath = await downloadService
+                                    .downloadYouTubeAudio(
+                                      youtubeUrl,
+                                      songTitle: songTitle,
+                                      onProgress: (progress) {
+                                        setState(() {
+                                          downloadProgress = progress;
+                                        });
+                                      },
+                                      onStatus: (status) {
+                                        setState(() {
+                                          statusMessage = status;
+                                        });
+                                      },
+                                    );
+
+                                if (localPath != null && context.mounted) {
+                                  // Update song with local file path
+                                  final musicService = MusicServiceProvider.of(
+                                    context,
+                                  );
+                                  musicService.updateLocalFilePath(
+                                    songId,
+                                    localPath,
+                                  );
+
+                                  setState(() {
+                                    downloadComplete = true;
+                                    isDownloading = false;
+                                  });
+                                } else {
+                                  // Download failed
+                                  setState(() {
+                                    isDownloading = false;
+                                  });
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(l10n.downloadFailed),
+                                        backgroundColor: colors.stardustPink,
+                                      ),
+                                    );
+                                  }
+                                  Navigator.of(dialogContext).pop();
+                                }
+                              },
+                              icon: const Icon(Icons.download),
+                              label: Text(l10n.downloadNow),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: colors.accentCyan,
+                                foregroundColor: colors.deepSpace,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 20,
+                                  vertical: 12,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
+                          ],
+                        )
+                      else if (downloadComplete)
+                        ElevatedButton(
+                          onPressed: () => Navigator.of(dialogContext).pop(),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: colors.auroraGreen,
+                            foregroundColor: colors.deepSpace,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 32,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Text(l10n.done),
+                        ),
+                    ],
                   ),
                 ),
               ),
@@ -903,37 +1196,51 @@ class MainScreen extends StatelessWidget {
     required String title,
     required VoidCallback onTap,
   }) {
+    final colors = ThemeProvider.colorsOf(context);
     return ListTile(
-      leading: Icon(icon, color: GalaxyTheme.moonGlow),
+      leading: Icon(icon, color: colors.moonGlow),
       title: Text(title, style: Theme.of(context).textTheme.bodyLarge),
       onTap: onTap,
-      hoverColor: GalaxyTheme.cosmicViolet.withOpacity(0.3),
+      hoverColor: colors.cosmicAccent.withOpacity(0.3),
     );
   }
 
   Widget _buildFallbackMessage(String message) {
-    return Center(
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        margin: const EdgeInsets.all(20),
-        decoration: GalaxyTheme.glassContainer(),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.error_outline,
-              size: 50,
-              color: GalaxyTheme.stardustPink,
+    return Builder(
+      builder: (context) {
+        final colors = ThemeProvider.colorsOf(context);
+        return Center(
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            margin: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              gradient: LinearGradient(
+                colors: [
+                  colors.nebulaPrimary.withOpacity(0.3),
+                  colors.cosmicAccent.withOpacity(0.1),
+                ],
+              ),
+              border: Border.all(
+                color: colors.moonGlow.withOpacity(0.2),
+                width: 1.5,
+              ),
             ),
-            const SizedBox(height: 16),
-            Text(
-              message,
-              style: const TextStyle(color: GalaxyTheme.moonGlow, fontSize: 16),
-              textAlign: TextAlign.center,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.error_outline, size: 50, color: colors.stardustPink),
+                const SizedBox(height: 16),
+                Text(
+                  message,
+                  style: TextStyle(color: colors.moonGlow, fontSize: 16),
+                  textAlign: TextAlign.center,
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }

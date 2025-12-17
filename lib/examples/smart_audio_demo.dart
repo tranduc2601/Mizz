@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../core/smart_audio_handler.dart';
 import '../core/theme.dart';
+import '../core/theme_provider.dart';
+import '../core/localization/app_localization.dart';
 
 /// Demo UI for SmartAudioHandler
 /// Shows how to use the universal audio player with buttons and loading indicator
@@ -32,10 +34,11 @@ class _SmartAudioDemoState extends State<SmartAudioDemo> {
   void _onErrorChanged() {
     final error = _audioHandler.errorMessage.value;
     if (error != null && mounted) {
+      final colors = ThemeProvider.colorsOf(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(error),
-          backgroundColor: Colors.red,
+          backgroundColor: colors.accentPink,
           duration: const Duration(seconds: 4),
         ),
       );
@@ -53,10 +56,11 @@ class _SmartAudioDemoState extends State<SmartAudioDemo> {
 
   Future<void> _playYouTubeLink() async {
     final url = _urlController.text.trim();
+    final l10n = AppLocalizations.of(context);
     if (url.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a YouTube URL')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.pasteYouTubeUrl)));
       return;
     }
 
@@ -75,20 +79,20 @@ class _SmartAudioDemoState extends State<SmartAudioDemo> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = ThemeProvider.colorsOf(context);
+    final l10n = AppLocalizations.of(context);
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Smart Audio Handler Demo'),
-        backgroundColor: GalaxyTheme.deepSpace,
+        title: Text(l10n.smartAudioDemo),
+        backgroundColor: colors.deepSpace,
       ),
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              GalaxyTheme.deepSpace,
-              GalaxyTheme.cosmicPurple.withOpacity(0.3),
-            ],
+            colors: [colors.deepSpace, colors.cosmicAccent.withOpacity(0.3)],
           ),
         ),
         child: SafeArea(
@@ -106,8 +110,8 @@ class _SmartAudioDemoState extends State<SmartAudioDemo> {
                       height: isLoading ? 60 : 0,
                       child: isLoading
                           ? Card(
-                              color: GalaxyTheme.cyberpunkCyan.withOpacity(0.2),
-                              child: const Row(
+                              color: colors.accentCyan.withOpacity(0.2),
+                              child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   SizedBox(
@@ -115,14 +119,14 @@ class _SmartAudioDemoState extends State<SmartAudioDemo> {
                                     height: 20,
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
-                                      color: GalaxyTheme.cyberpunkCyan,
+                                      color: colors.accentCyan,
                                     ),
                                   ),
-                                  SizedBox(width: 16),
+                                  const SizedBox(width: 16),
                                   Text(
-                                    'Loading audio...',
+                                    l10n.loadingAudio,
                                     style: TextStyle(
-                                      color: GalaxyTheme.moonGlow,
+                                      color: colors.moonGlow,
                                       fontSize: 16,
                                     ),
                                   ),
@@ -141,9 +145,9 @@ class _SmartAudioDemoState extends State<SmartAudioDemo> {
                   valueListenable: _audioHandler.playerState,
                   builder: (context, state, _) {
                     final title =
-                        _audioHandler.currentTitle ?? 'No track loaded';
+                        _audioHandler.currentTitle ?? l10n.noTrackLoaded;
                     return Card(
-                      color: GalaxyTheme.deepSpace.withOpacity(0.8),
+                      color: colors.deepSpace.withOpacity(0.8),
                       child: Padding(
                         padding: const EdgeInsets.all(16.0),
                         child: Column(
@@ -153,13 +157,13 @@ class _SmartAudioDemoState extends State<SmartAudioDemo> {
                                   ? Icons.music_note
                                   : Icons.music_off,
                               size: 48,
-                              color: GalaxyTheme.cyberpunkPink,
+                              color: colors.accentPink,
                             ),
                             const SizedBox(height: 8),
                             Text(
                               title,
-                              style: const TextStyle(
-                                color: GalaxyTheme.moonGlow,
+                              style: TextStyle(
+                                color: colors.moonGlow,
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -170,12 +174,12 @@ class _SmartAudioDemoState extends State<SmartAudioDemo> {
                             const SizedBox(height: 8),
                             Text(
                               state == PlayerState.playing
-                                  ? 'Playing'
+                                  ? l10n.playing
                                   : state == PlayerState.paused
-                                  ? 'Paused'
-                                  : 'Stopped',
+                                  ? l10n.paused
+                                  : l10n.stopped,
                               style: TextStyle(
-                                color: GalaxyTheme.moonGlow.withOpacity(0.7),
+                                color: colors.moonGlow.withOpacity(0.7),
                                 fontSize: 14,
                               ),
                             ),
@@ -203,9 +207,9 @@ class _SmartAudioDemoState extends State<SmartAudioDemo> {
                           children: [
                             SliderTheme(
                               data: SliderTheme.of(context).copyWith(
-                                activeTrackColor: GalaxyTheme.cyberpunkCyan,
+                                activeTrackColor: colors.accentCyan,
                                 inactiveTrackColor: Colors.white24,
-                                thumbColor: GalaxyTheme.cyberpunkPink,
+                                thumbColor: colors.accentPink,
                               ),
                               child: Slider(
                                 value: progress.clamp(0.0, 1.0),
@@ -229,15 +233,15 @@ class _SmartAudioDemoState extends State<SmartAudioDemo> {
                                 children: [
                                   Text(
                                     _formatDuration(position),
-                                    style: const TextStyle(
-                                      color: GalaxyTheme.moonGlow,
+                                    style: TextStyle(
+                                      color: colors.moonGlow,
                                       fontSize: 12,
                                     ),
                                   ),
                                   Text(
                                     _formatDuration(duration),
-                                    style: const TextStyle(
-                                      color: GalaxyTheme.moonGlow,
+                                    style: TextStyle(
+                                      color: colors.moonGlow,
                                       fontSize: 12,
                                     ),
                                   ),
@@ -263,18 +267,15 @@ class _SmartAudioDemoState extends State<SmartAudioDemo> {
                         IconButton(
                           onPressed: () => _audioHandler.stop(),
                           icon: const Icon(Icons.stop),
-                          color: GalaxyTheme.moonGlow,
+                          color: colors.moonGlow,
                           iconSize: 32,
                         ),
                         const SizedBox(width: 20),
                         Container(
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            gradient: const LinearGradient(
-                              colors: [
-                                GalaxyTheme.cyberpunkPink,
-                                GalaxyTheme.cyberpunkCyan,
-                              ],
+                            gradient: LinearGradient(
+                              colors: [colors.accentPink, colors.accentCyan],
                             ),
                           ),
                           child: IconButton(
@@ -296,14 +297,14 @@ class _SmartAudioDemoState extends State<SmartAudioDemo> {
                 ),
 
                 const SizedBox(height: 30),
-                const Divider(color: Colors.white24),
+                Divider(color: colors.moonGlow.withOpacity(0.2)),
                 const SizedBox(height: 20),
 
                 // YouTube URL Input
                 Text(
-                  'Play YouTube Link',
+                  l10n.playYouTubeLink,
                   style: TextStyle(
-                    color: GalaxyTheme.moonGlow.withOpacity(0.8),
+                    color: colors.moonGlow.withOpacity(0.8),
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
@@ -311,16 +312,13 @@ class _SmartAudioDemoState extends State<SmartAudioDemo> {
                 const SizedBox(height: 12),
                 TextField(
                   controller: _urlController,
-                  style: const TextStyle(color: GalaxyTheme.moonGlow),
+                  style: TextStyle(color: colors.moonGlow),
                   decoration: InputDecoration(
-                    hintText: 'Paste YouTube URL here',
+                    hintText: l10n.pasteYouTubeUrl,
                     hintStyle: TextStyle(
-                      color: GalaxyTheme.moonGlow.withOpacity(0.5),
+                      color: colors.moonGlow.withOpacity(0.5),
                     ),
-                    prefixIcon: const Icon(
-                      Icons.link,
-                      color: GalaxyTheme.auroraGreen,
-                    ),
+                    prefixIcon: Icon(Icons.link, color: colors.auroraGreen),
                     filled: true,
                     fillColor: Colors.white10,
                     border: OutlineInputBorder(
@@ -338,9 +336,9 @@ class _SmartAudioDemoState extends State<SmartAudioDemo> {
                       ? null
                       : _playYouTubeLink,
                   icon: const Icon(Icons.play_circle_outline),
-                  label: const Text('Play YouTube Link'),
+                  label: Text(l10n.playYouTubeLink),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: GalaxyTheme.auroraGreen,
+                    backgroundColor: colors.auroraGreen,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
@@ -357,9 +355,9 @@ class _SmartAudioDemoState extends State<SmartAudioDemo> {
                       ? null
                       : () => _audioHandler.pickAndPlayLocalFile(),
                   icon: const Icon(Icons.folder_open),
-                  label: const Text('Pick Local Audio File'),
+                  label: Text(l10n.pickLocalFile),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: GalaxyTheme.cyberpunkCyan,
+                    backgroundColor: colors.accentCyan,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(

@@ -1,9 +1,11 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'theme.dart';
+import 'theme_provider.dart';
 
 /// Animated Galaxy Cyberpunk Background
 /// Features moving stars, nebula clouds, and cyberpunk grid lines
+/// Uses dynamic colors from ThemeProvider
 class AnimatedGalaxyBackground extends StatefulWidget {
   final Widget child;
 
@@ -60,15 +62,22 @@ class _AnimatedGalaxyBackgroundState extends State<AnimatedGalaxyBackground>
 
   @override
   Widget build(BuildContext context) {
+    // Get dynamic colors from theme provider
+    final colors = ThemeProvider.colorsOf(context);
+
     return Stack(
       children: [
-        // Base gradient background
+        // Base gradient background - uses dynamic theme colors
         Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [Color(0xFF0A0E27), Color(0xFF1A0B2E), Color(0xFF2D1B4E)],
+              colors: [
+                colors.deepSpace,
+                colors.nebulaPrimary,
+                colors.cosmicAccent.withOpacity(0.6),
+              ],
             ),
           ),
         ),
@@ -78,7 +87,7 @@ class _AnimatedGalaxyBackgroundState extends State<AnimatedGalaxyBackground>
           animation: _nebulaController,
           builder: (context, child) {
             return CustomPaint(
-              painter: NebulaPainter(_nebulaController.value),
+              painter: NebulaPainter(_nebulaController.value, colors),
               size: Size.infinite,
             );
           },
@@ -89,13 +98,13 @@ class _AnimatedGalaxyBackgroundState extends State<AnimatedGalaxyBackground>
           animation: _starsController,
           builder: (context, child) {
             return CustomPaint(
-              painter: StarsPainter(_stars, _starsController.value),
+              painter: StarsPainter(_stars, _starsController.value, colors),
               size: Size.infinite,
             );
           },
         ),
 
-        // Cyberpunk glow accents
+        // Cyberpunk glow accents - uses dynamic theme colors
         Positioned(
           top: 100,
           left: 0,
@@ -105,7 +114,7 @@ class _AnimatedGalaxyBackgroundState extends State<AnimatedGalaxyBackground>
             decoration: BoxDecoration(
               gradient: RadialGradient(
                 colors: [
-                  GalaxyTheme.cyberpunkPink.withOpacity(0.3),
+                  colors.accentPink.withOpacity(0.3),
                   Colors.transparent,
                 ],
               ),
@@ -122,7 +131,7 @@ class _AnimatedGalaxyBackgroundState extends State<AnimatedGalaxyBackground>
             decoration: BoxDecoration(
               gradient: RadialGradient(
                 colors: [
-                  GalaxyTheme.cyberpunkCyan.withOpacity(0.3),
+                  colors.accentCyan.withOpacity(0.3),
                   Colors.transparent,
                 ],
               ),
@@ -156,8 +165,9 @@ class Star {
 class StarsPainter extends CustomPainter {
   final List<Star> stars;
   final double animationValue;
+  final AppThemeColors colors;
 
-  StarsPainter(this.stars, this.animationValue);
+  StarsPainter(this.stars, this.animationValue, this.colors);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -173,9 +183,9 @@ class StarsPainter extends CustomPainter {
       paint.color = Colors.white.withOpacity(star.opacity);
       canvas.drawCircle(Offset(dx, dy), star.size, paint);
 
-      // Add twinkle effect
+      // Add twinkle effect - uses dynamic accent color
       if ((animationValue * 100 + star.x * 100).toInt() % 100 < 2) {
-        paint.color = GalaxyTheme.cyberpunkCyan.withOpacity(0.8);
+        paint.color = colors.accentCyan.withOpacity(0.8);
         canvas.drawCircle(Offset(dx, dy), star.size * 1.5, paint);
       }
     }
@@ -187,49 +197,50 @@ class StarsPainter extends CustomPainter {
 
 class NebulaPainter extends CustomPainter {
   final double animationValue;
+  final AppThemeColors colors;
 
-  NebulaPainter(this.animationValue);
+  NebulaPainter(this.animationValue, this.colors);
 
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 50);
 
-    // Nebula cloud 1
+    // Nebula cloud 1 - uses dynamic theme colors
     final offset1 = Offset(
       size.width * 0.3 + sin(animationValue * 2 * pi) * 50,
       size.height * 0.3 + cos(animationValue * 2 * pi) * 30,
     );
     paint.shader = RadialGradient(
       colors: [
-        GalaxyTheme.nebulaPurple.withOpacity(0.3),
-        GalaxyTheme.cosmicViolet.withOpacity(0.1),
+        colors.nebulaPrimary.withOpacity(0.3),
+        colors.cosmicAccent.withOpacity(0.1),
         Colors.transparent,
       ],
     ).createShader(Rect.fromCircle(center: offset1, radius: 200));
     canvas.drawCircle(offset1, 200, paint);
 
-    // Nebula cloud 2
+    // Nebula cloud 2 - uses dynamic theme colors
     final offset2 = Offset(
       size.width * 0.7 + cos(animationValue * 2 * pi) * 60,
       size.height * 0.6 + sin(animationValue * 2 * pi) * 40,
     );
     paint.shader = RadialGradient(
       colors: [
-        GalaxyTheme.stardustPink.withOpacity(0.2),
-        GalaxyTheme.cyberpunkPink.withOpacity(0.1),
+        colors.stardustPink.withOpacity(0.2),
+        colors.accentPink.withOpacity(0.1),
         Colors.transparent,
       ],
     ).createShader(Rect.fromCircle(center: offset2, radius: 250));
     canvas.drawCircle(offset2, 250, paint);
 
-    // Cyberpunk accent cloud
+    // Cyberpunk accent cloud - uses dynamic accent color
     final offset3 = Offset(
       size.width * 0.5 + sin(animationValue * 3 * pi) * 40,
       size.height * 0.8 + cos(animationValue * 3 * pi) * 20,
     );
     paint.shader = RadialGradient(
-      colors: [GalaxyTheme.cyberpunkCyan.withOpacity(0.2), Colors.transparent],
+      colors: [colors.accentCyan.withOpacity(0.2), Colors.transparent],
     ).createShader(Rect.fromCircle(center: offset3, radius: 150));
     canvas.drawCircle(offset3, 150, paint);
   }

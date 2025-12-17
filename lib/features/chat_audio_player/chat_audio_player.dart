@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:audioplayers/audioplayers.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -47,7 +47,7 @@ class _ChatAudioPlayerState extends State<ChatAudioPlayer> {
   String? _filePath;
   String? _fileName;
   bool _isLoading = false;
-  PlayerState _playerState = PlayerState.stopped;
+  bool _isPlaying = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
 
@@ -62,33 +62,29 @@ class _ChatAudioPlayerState extends State<ChatAudioPlayer> {
     }
 
     // Listen to player state changes
-    _audioPlayer.onPlayerStateChanged.listen((state) {
+    _audioPlayer.playerStateStream.listen((state) {
       if (mounted) {
-        setState(() => _playerState = state);
+        setState(() {
+          _isPlaying = state.playing;
+          if (state.processingState == ProcessingState.completed) {
+            _position = Duration.zero;
+            _isPlaying = false;
+          }
+        });
       }
     });
 
     // Listen to position changes
-    _audioPlayer.onPositionChanged.listen((pos) {
+    _audioPlayer.positionStream.listen((pos) {
       if (mounted) {
         setState(() => _position = pos);
       }
     });
 
     // Listen to duration changes
-    _audioPlayer.onDurationChanged.listen((dur) {
+    _audioPlayer.durationStream.listen((dur) {
       if (mounted) {
-        setState(() => _duration = dur);
-      }
-    });
-
-    // Listen for completion
-    _audioPlayer.onPlayerComplete.listen((_) {
-      if (mounted) {
-        setState(() {
-          _position = Duration.zero;
-          _playerState = PlayerState.stopped;
-        });
+        setState(() => _duration = dur ?? Duration.zero);
       }
     });
   }
@@ -101,9 +97,6 @@ class _ChatAudioPlayerState extends State<ChatAudioPlayer> {
 
   /// Request necessary permissions for Android 13+
   Future<bool> _requestPermissions() async {
-    // Android 13+ (API 33+) uses READ_MEDIA_AUDIO
-    // Older versions use READ_EXTERNAL_STORAGE
-
     if (Platform.isAndroid) {
       // Try audio permission first (Android 13+)
       if (await Permission.audio.request().isGranted) {
@@ -174,8 +167,7 @@ class _ChatAudioPlayerState extends State<ChatAudioPlayer> {
         return;
       }
 
-      // Open file picker with custom extensions (more reliable than FileType.audio)
-      // FileType.audio can fail on some Android devices with "invalid_format_type"
+      // Open file picker with custom extensions
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: [
@@ -194,9 +186,6 @@ class _ChatAudioPlayerState extends State<ChatAudioPlayer> {
 
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
-
-        // CRITICAL: On Android, use the cached path for reliable playback
-        // file.path contains the cached copy path that audioplayers can access
         String? filePath = file.path;
 
         if (filePath != null) {
@@ -233,11 +222,14 @@ class _ChatAudioPlayerState extends State<ChatAudioPlayer> {
     }
 
     try {
-      if (_playerState == PlayerState.playing) {
+      if (_isPlaying) {
         await _audioPlayer.pause();
       } else {
-        // Use DeviceFileSource for local files
-        await _audioPlayer.play(DeviceFileSource(_filePath!));
+        // Set file path if not already set
+        if (_audioPlayer.audioSource == null) {
+          await _audioPlayer.setFilePath(_filePath!);
+        }
+        await _audioPlayer.play();
       }
     } catch (e) {
       debugPrint('❌ Playback error: $e');
@@ -248,6 +240,7 @@ class _ChatAudioPlayerState extends State<ChatAudioPlayer> {
   /// Stop playback
   Future<void> _stop() async {
     await _audioPlayer.stop();
+    await _audioPlayer.seek(Duration.zero);
     setState(() {
       _position = Duration.zero;
     });
@@ -273,7 +266,6 @@ class _ChatAudioPlayerState extends State<ChatAudioPlayer> {
 
   @override
   Widget build(BuildContext context) {
-    final isPlaying = _playerState == PlayerState.playing;
     final hasFile = _filePath != null;
 
     return Container(
@@ -282,12 +274,12 @@ class _ChatAudioPlayerState extends State<ChatAudioPlayer> {
         color: widget.backgroundColor,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: widget.primaryColor.withOpacity(0.3),
+          color: widget.primaryColor.withValues(alpha: 0.3),
           width: 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: widget.primaryColor.withOpacity(0.1),
+            color: widget.primaryColor.withValues(alpha: 0.1),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -303,7 +295,7 @@ class _ChatAudioPlayerState extends State<ChatAudioPlayer> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: widget.primaryColor.withOpacity(0.2),
+                  color: widget.primaryColor.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
@@ -334,7 +326,7 @@ class _ChatAudioPlayerState extends State<ChatAudioPlayer> {
                       Text(
                         _formatDuration(_duration),
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.5),
+                          color: Colors.white.withValues(alpha: 0.5),
                           fontSize: 12,
                         ),
                       ),
@@ -371,7 +363,7 @@ class _ChatAudioPlayerState extends State<ChatAudioPlayer> {
             SliderTheme(
               data: SliderTheme.of(context).copyWith(
                 activeTrackColor: widget.primaryColor,
-                inactiveTrackColor: widget.primaryColor.withOpacity(0.2),
+                inactiveTrackColor: widget.primaryColor.withValues(alpha: 0.2),
                 thumbColor: widget.primaryColor,
                 trackHeight: 4,
                 thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
@@ -402,14 +394,14 @@ class _ChatAudioPlayerState extends State<ChatAudioPlayer> {
                   Text(
                     _formatDuration(_position),
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.6),
+                      color: Colors.white.withValues(alpha: 0.6),
                       fontSize: 12,
                     ),
                   ),
                   Text(
                     _formatDuration(_duration),
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.6),
+                      color: Colors.white.withValues(alpha: 0.6),
                       fontSize: 12,
                     ),
                   ),
@@ -439,13 +431,13 @@ class _ChatAudioPlayerState extends State<ChatAudioPlayer> {
                     gradient: LinearGradient(
                       colors: [
                         widget.primaryColor,
-                        widget.primaryColor.withOpacity(0.7),
+                        widget.primaryColor.withValues(alpha: 0.7),
                       ],
                     ),
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: widget.primaryColor.withOpacity(0.4),
+                        color: widget.primaryColor.withValues(alpha: 0.4),
                         blurRadius: 12,
                         offset: const Offset(0, 4),
                       ),
@@ -454,7 +446,7 @@ class _ChatAudioPlayerState extends State<ChatAudioPlayer> {
                   child: IconButton(
                     onPressed: _togglePlayPause,
                     icon: Icon(
-                      isPlaying
+                      _isPlaying
                           ? Icons.pause_rounded
                           : Icons.play_arrow_rounded,
                     ),

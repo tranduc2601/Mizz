@@ -36,13 +36,21 @@ dependencies:
   cupertino_icons: ^1.0.8
   image_picker: ^1.0.7
   file_picker: ^10.3.7
+  
+  # Audio playback with background support
   just_audio: ^0.9.36
-  audioplayers: ^6.0.0
+  audio_session: ^0.1.21
+  
+  # Image color extraction
+  palette_generator: ^0.3.3+4
+  
+  # UI components
   audio_video_progress_bar: ^2.0.0
   shared_preferences: ^2.2.2
   youtube_explode_dart: ^2.0.2
   permission_handler: ^11.3.0
   path_provider: ^2.1.1
+  rxdart: ^0.28.0
   
   # In-App Update (OTA) dependencies
   http: ^1.2.0
@@ -59,6 +67,9 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  
+  # Tool to change app launcher icons
+  flutter_launcher_icons: ^0.14.1
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -99,5 +110,14 @@ flutter:
   #       - asset: fonts/TrajanPro_Bold.ttf
   #         weight: 700
   #
+
+# Configuration for flutter_launcher_icons
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/App_Logo.png"
+  # Optional: customize adaptive icons for Android
+  # adaptive_icon_background: "#ffffff"
+  # adaptive_icon_foreground: "assets/App_Logo.png"
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package

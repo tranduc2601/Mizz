@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
+import '../../core/theme_provider.dart';
+import '../../core/localization/app_localization.dart';
 import '../auth/auth_service.dart';
 import '../auth/login_screen.dart';
 import '../music_carousel/music_service.dart';
@@ -20,18 +22,16 @@ class UserProfileViewEnhanced extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final user = authService.currentUser;
+    final colors = ThemeProvider.colorsOf(context);
+    final l10n = AppLocalizations.of(context);
 
     return Container(
       width: 320,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            GalaxyTheme.deepSpace,
-            GalaxyTheme.nebulaPurple,
-            GalaxyTheme.cosmicViolet,
-          ],
+          colors: [colors.deepSpace, colors.nebulaPrimary, colors.cosmicAccent],
         ),
       ),
       child: SafeArea(
@@ -44,15 +44,12 @@ class UserProfileViewEnhanced extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   ShaderMask(
-                    shaderCallback: (bounds) => const LinearGradient(
-                      colors: [
-                        GalaxyTheme.cyberpunkPink,
-                        GalaxyTheme.cyberpunkCyan,
-                      ],
+                    shaderCallback: (bounds) => LinearGradient(
+                      colors: [colors.accentPink, colors.accentCyan],
                     ).createShader(bounds),
-                    child: const Text(
-                      'Profile',
-                      style: TextStyle(
+                    child: Text(
+                      l10n.profile,
+                      style: const TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
@@ -83,13 +80,10 @@ class UserProfileViewEnhanced extends StatelessWidget {
                   Container(
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      border: Border.all(
-                        color: GalaxyTheme.cyberpunkCyan,
-                        width: 3,
-                      ),
+                      border: Border.all(color: colors.accentCyan, width: 3),
                       boxShadow: [
                         BoxShadow(
-                          color: GalaxyTheme.cyberpunkCyan.withOpacity(0.5),
+                          color: colors.accentCyan.withOpacity(0.5),
                           blurRadius: 20,
                           spreadRadius: 5,
                         ),
@@ -97,7 +91,7 @@ class UserProfileViewEnhanced extends StatelessWidget {
                     ),
                     child: CircleAvatar(
                       radius: 50,
-                      backgroundColor: GalaxyTheme.cosmicViolet,
+                      backgroundColor: colors.cosmicAccent,
                       backgroundImage: _getAvatarImage(user?.avatarUrl),
                       child: user?.avatarUrl == null || user!.avatarUrl!.isEmpty
                           ? const Icon(
@@ -115,11 +109,8 @@ class UserProfileViewEnhanced extends StatelessWidget {
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        gradient: const LinearGradient(
-                          colors: [
-                            GalaxyTheme.cyberpunkPink,
-                            GalaxyTheme.cyberpunkCyan,
-                          ],
+                        gradient: LinearGradient(
+                          colors: [colors.accentPink, colors.accentCyan],
                         ),
                       ),
                       child: const Icon(
@@ -162,9 +153,24 @@ class UserProfileViewEnhanced extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _buildStatCard('Songs', '${musicService?.totalSongs ?? 0}', Icons.music_note),
-                _buildStatCard('Favorites', '${musicService?.totalFavorites ?? 0}', Icons.favorite),
-                _buildStatCard('Playlists', '0', Icons.playlist_play),
+                _buildStatCard(
+                  context,
+                  l10n.songs,
+                  '${musicService?.totalSongs ?? 0}',
+                  Icons.music_note,
+                ),
+                _buildStatCard(
+                  context,
+                  l10n.favorites,
+                  '${musicService?.totalFavorites ?? 0}',
+                  Icons.favorite,
+                ),
+                _buildStatCard(
+                  context,
+                  l10n.playlists,
+                  '0',
+                  Icons.playlist_play,
+                ),
               ],
             ),
 
@@ -178,7 +184,7 @@ class UserProfileViewEnhanced extends StatelessWidget {
                   _buildMenuItem(
                     context,
                     icon: Icons.person,
-                    title: 'Edit Profile',
+                    title: l10n.editProfile,
                     onTap: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
@@ -191,27 +197,27 @@ class UserProfileViewEnhanced extends StatelessWidget {
                   _buildMenuItem(
                     context,
                     icon: Icons.notifications_outlined,
-                    title: 'Notifications',
-                    subtitle: 'Manage alerts',
+                    title: l10n.notifications,
+                    subtitle: l10n.manageNotifications,
                     onTap: () {},
                   ),
                   _buildMenuItem(
                     context,
                     icon: Icons.security,
-                    title: 'Privacy & Security',
+                    title: l10n.privacy,
                     onTap: () {},
                   ),
                   _buildMenuItem(
                     context,
                     icon: Icons.help_outline,
-                    title: 'Help & Support',
+                    title: l10n.helpAndSupport,
                     onTap: () {},
                   ),
                   const Divider(color: Colors.white24, height: 30),
                   _buildMenuItem(
                     context,
                     icon: Icons.logout,
-                    title: 'Logout',
+                    title: l10n.logout,
                     iconColor: Colors.red,
                     onTap: () async {
                       await authService.logout();
@@ -235,9 +241,16 @@ class UserProfileViewEnhanced extends StatelessWidget {
     );
   }
 
-  Widget _buildStatCard(String label, String value, IconData icon) {
+  Widget _buildStatCard(
+    BuildContext context,
+    String label,
+    String value,
+    IconData icon,
+  ) {
+    final colors = ThemeProvider.colorsOf(context);
     return Container(
-      padding: const EdgeInsets.all(12),
+      width: 90,
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
         gradient: LinearGradient(
@@ -250,7 +263,7 @@ class UserProfileViewEnhanced extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Icon(icon, color: GalaxyTheme.cyberpunkCyan, size: 24),
+          Icon(icon, color: colors.accentCyan, size: 24),
           const SizedBox(height: 8),
           Text(
             value,
@@ -276,18 +289,18 @@ class UserProfileViewEnhanced extends StatelessWidget {
   /// Helper to get avatar image from path (handles both local files and URLs)
   ImageProvider? _getAvatarImage(String? avatarUrl) {
     if (avatarUrl == null || avatarUrl.isEmpty) return null;
-    
+
     // Check if it's a network URL
     if (avatarUrl.startsWith('http://') || avatarUrl.startsWith('https://')) {
       return NetworkImage(avatarUrl);
     }
-    
+
     // It's a local file path
     final file = File(avatarUrl);
     if (file.existsSync()) {
       return FileImage(file);
     }
-    
+
     return null;
   }
 
@@ -299,6 +312,7 @@ class UserProfileViewEnhanced extends StatelessWidget {
     Color? iconColor,
     required VoidCallback onTap,
   }) {
+    final colors = ThemeProvider.colorsOf(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
@@ -315,13 +329,9 @@ class UserProfileViewEnhanced extends StatelessWidget {
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: (iconColor ?? GalaxyTheme.cyberpunkCyan).withOpacity(0.2),
+            color: (iconColor ?? colors.accentCyan).withOpacity(0.2),
           ),
-          child: Icon(
-            icon,
-            color: iconColor ?? GalaxyTheme.cyberpunkCyan,
-            size: 20,
-          ),
+          child: Icon(icon, color: iconColor ?? colors.accentCyan, size: 20),
         ),
         title: Text(
           title,

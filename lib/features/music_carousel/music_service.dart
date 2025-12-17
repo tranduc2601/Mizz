@@ -15,7 +15,8 @@ class MusicService extends ChangeNotifier {
   }
 
   List<MusicItem> get musicItems => List.unmodifiable(_musicItems);
-  List<MusicItem> get favoriteItems => _musicItems.where((s) => s.isFavorite).toList();
+  List<MusicItem> get favoriteItems =>
+      _musicItems.where((s) => s.isFavorite).toList();
   List<MusicItem> get recentlyPlayed => List.unmodifiable(_recentlyPlayed);
   int get totalSongs => _musicItems.length;
   int get totalFavorites => favoriteItems.length;
@@ -30,14 +31,14 @@ class MusicService extends ChangeNotifier {
         _musicItems = jsonList.map((j) => _musicItemFromJson(j)).toList();
         debugPrint('📂 Loaded ${_musicItems.length} songs from storage');
       }
-      
+
       // Load recently played
       final recentJson = prefs.getString(_recentlyPlayedKey);
       if (recentJson != null) {
         final List<dynamic> recentList = json.decode(recentJson);
         _recentlyPlayed = recentList.map((j) => _musicItemFromJson(j)).toList();
       }
-      
+
       notifyListeners();
     } catch (e) {
       debugPrint('❌ Error loading songs: $e');
@@ -50,11 +51,14 @@ class MusicService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final jsonList = _musicItems.map((s) => _musicItemToJson(s)).toList();
       await prefs.setString(_storageKey, json.encode(jsonList));
-      
+
       // Save recently played (max 50)
-      final recentList = _recentlyPlayed.take(50).map((s) => _musicItemToJson(s)).toList();
+      final recentList = _recentlyPlayed
+          .take(50)
+          .map((s) => _musicItemToJson(s))
+          .toList();
       await prefs.setString(_recentlyPlayedKey, json.encode(recentList));
-      
+
       debugPrint('💾 Saved ${_musicItems.length} songs to storage');
     } catch (e) {
       debugPrint('❌ Error saving songs: $e');
@@ -68,6 +72,7 @@ class MusicService extends ChangeNotifier {
       'artist': item.artist,
       'albumArt': item.albumArt,
       'musicSource': item.musicSource,
+      'localFilePath': item.localFilePath,
       'duration': item.duration,
       'isFavorite': item.isFavorite,
     };
@@ -80,24 +85,28 @@ class MusicService extends ChangeNotifier {
       artist: json['artist'] ?? '',
       albumArt: json['albumArt'] ?? '',
       musicSource: json['musicSource'] ?? '',
+      localFilePath: json['localFilePath'],
       duration: json['duration'] ?? '0:00',
       isFavorite: json['isFavorite'] ?? false,
     );
   }
 
-  /// Add a new song to the library
-  void addSong({
+  /// Add a new song to the library and return the song ID
+  String addSong({
     required String title,
     required String artist,
     required String musicSource,
     String? albumArt,
+    String? localFilePath,
   }) {
+    final songId = DateTime.now().millisecondsSinceEpoch.toString();
     final newSong = MusicItem(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: songId,
       title: title,
       artist: artist,
       albumArt: albumArt ?? '',
       musicSource: musicSource,
+      localFilePath: localFilePath,
       duration: '0:00',
       isFavorite: false,
     );
@@ -105,6 +114,20 @@ class MusicService extends ChangeNotifier {
     _musicItems.add(newSong);
     _saveToStorage();
     notifyListeners();
+    return songId;
+  }
+
+  /// Update the local file path for a song (after YouTube conversion)
+  void updateLocalFilePath(String id, String localFilePath) {
+    final index = _musicItems.indexWhere((song) => song.id == id);
+    if (index != -1) {
+      _musicItems[index] = _musicItems[index].copyWith(
+        localFilePath: localFilePath,
+      );
+      _saveToStorage();
+      notifyListeners();
+      debugPrint('✅ Updated local file path for song $id: $localFilePath');
+    }
   }
 
   /// Remove a song from the library
