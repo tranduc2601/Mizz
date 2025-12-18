@@ -275,8 +275,9 @@ Future<void> initMizzAudioService() async {
       androidNotificationChannelDescription: 'Music playback controls',
 
       // Notification icon (small icon in status bar)
-      // This should match a drawable resource name in android/app/src/main/res/drawable
-      androidNotificationIcon: 'drawable/ic_mizz_notification',
+      // Using mipmap launcher icon which is guaranteed to exist
+      // Format: 'mipmap/ic_launcher' for mipmap resources
+      androidNotificationIcon: 'mipmap/ic_launcher',
 
       // Notification behavior:
       // androidStopForegroundOnPause: false - keeps foreground service during pause for stable background playback

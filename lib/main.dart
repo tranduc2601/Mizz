@@ -19,7 +19,11 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialize Background Audio Service (legacy)
-  await initAudioService();
+  try {
+    await initAudioService();
+  } catch (e) {
+    debugPrint('⚠️ Failed to initialize background audio service: $e');
+  }
 
   // Initialize Media Notification Service (Android 13+ style)
   try {
