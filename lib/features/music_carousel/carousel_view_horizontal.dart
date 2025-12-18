@@ -42,11 +42,22 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
 
     if (musicItems.isEmpty) return;
 
+    // Find the index of the currently playing song by its ID
+    // This ensures we play the correct next song even if the carousel was scrolled
+    final currentSongId = _playerService.currentSongId;
+    int actualCurrentIndex = _currentIndex;
+    if (currentSongId != null) {
+      final foundIndex = musicItems.indexWhere((s) => s.id == currentSongId);
+      if (foundIndex != -1) {
+        actualCurrentIndex = foundIndex;
+      }
+    }
+
     int nextIndex;
     if (_playerService.loopMode == MusicLoopMode.all) {
-      nextIndex = (_currentIndex + 1) % musicItems.length;
+      nextIndex = (actualCurrentIndex + 1) % musicItems.length;
     } else {
-      nextIndex = _currentIndex + 1;
+      nextIndex = actualCurrentIndex + 1;
       if (nextIndex >= musicItems.length) return;
     }
 
@@ -55,6 +66,7 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
     });
 
     final nextSong = musicItems[nextIndex];
+    musicService.addToRecentlyPlayed(nextSong.id);
     _playerService.playSong(
       nextSong.id,
       nextSong.musicSource,
@@ -69,11 +81,22 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
 
     if (musicItems.isEmpty) return;
 
+    // Find the index of the currently playing song by its ID
+    final currentSongId = _playerService.currentSongId;
+    int actualCurrentIndex = _currentIndex;
+    if (currentSongId != null) {
+      final foundIndex = musicItems.indexWhere((s) => s.id == currentSongId);
+      if (foundIndex != -1) {
+        actualCurrentIndex = foundIndex;
+      }
+    }
+
     int prevIndex;
     if (_playerService.loopMode == MusicLoopMode.all) {
-      prevIndex = (_currentIndex - 1 + musicItems.length) % musicItems.length;
+      prevIndex =
+          (actualCurrentIndex - 1 + musicItems.length) % musicItems.length;
     } else {
-      prevIndex = _currentIndex - 1;
+      prevIndex = actualCurrentIndex - 1;
       if (prevIndex < 0) return;
     }
 
@@ -82,6 +105,7 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
     });
 
     final prevSong = musicItems[prevIndex];
+    musicService.addToRecentlyPlayed(prevSong.id);
     _playerService.playSong(
       prevSong.id,
       prevSong.musicSource,
@@ -159,95 +183,88 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
         final currentColor =
             _dominantColors[currentSong.id] ?? GalaxyTheme.cyberpunkCyan;
 
-        return SingleChildScrollView(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const SizedBox(height: 20),
-
-              // 3D Circular Carousel
-              Carousel3D(
-                items: musicItems,
-                currentIndex: _currentIndex,
-                onIndexChanged: (index) {
-                  setState(() {
-                    _currentIndex = index;
-                  });
-                },
-                cardBuilder: (item, isFront, shadowColor) {
-                  return MusicCard3D(
-                    item: item,
-                    isFront: isFront,
-                    shadowColor: shadowColor,
-                    onMenuTap: isFront
-                        ? () => _showCardMenu(context, musicService, item)
-                        : null,
-                  );
-                },
-              ),
-
-              const SizedBox(height: 24),
-
-              // Song Info
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 40),
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
                 child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      currentSong.title,
-                      style: Theme.of(context).textTheme.headlineSmall
-                          ?.copyWith(fontWeight: FontWeight.bold),
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      currentSong.artist,
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: GalaxyTheme.moonGlow.withOpacity(0.7),
+                    // Top section: Carousel only - centered
+                    Expanded(
+                      child: Center(
+                        child: Carousel3D(
+                          items: musicItems,
+                          currentIndex: _currentIndex,
+                          onIndexChanged: (index) {
+                            setState(() {
+                              _currentIndex = index;
+                            });
+                          },
+                          cardBuilder: (item, isFront, shadowColor) {
+                            return MusicCard3D(
+                              item: item,
+                              isFront: isFront,
+                              shadowColor: shadowColor,
+                              onMenuTap: isFront
+                                  ? () => _showCardMenu(
+                                      context,
+                                      musicService,
+                                      item,
+                                    )
+                                  : null,
+                            );
+                          },
+                        ),
                       ),
-                      textAlign: TextAlign.center,
+                    ),
+
+                    // Bottom section: Controls at the bottom
+                    Column(
+                      children: [
+                        // History and Speed Buttons
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 40),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              _buildHistoryButton(context, musicService),
+                              _buildSpeedButton(),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 8),
+
+                        // Progress Bar
+                        _buildProgressBar(context, currentColor),
+
+                        const SizedBox(height: 24),
+
+                        // Control Buttons
+                        _buildControlButtons(
+                          context,
+                          musicService,
+                          musicItems,
+                          currentSong,
+                          isPlaying,
+                          currentColor,
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // Volume Slider
+                        _buildVolumeSlider(currentColor),
+
+                        const SizedBox(height: 20),
+                      ],
                     ),
                   ],
                 ),
               ),
-
-              const SizedBox(height: 16),
-
-              // Speed Button
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 40),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [_buildSpeedButton()],
-                ),
-              ),
-
-              const SizedBox(height: 8),
-
-              // Progress Bar
-              _buildProgressBar(context, currentColor),
-
-              const SizedBox(height: 24),
-
-              // Control Buttons
-              _buildControlButtons(
-                context,
-                musicItems,
-                currentSong,
-                isPlaying,
-                currentColor,
-              ),
-
-              const SizedBox(height: 16),
-
-              // Volume Slider
-              _buildVolumeSlider(currentColor),
-
-              const SizedBox(height: 20),
-            ],
-          ),
+            );
+          },
         );
       },
     );
@@ -329,6 +346,7 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
 
   Widget _buildControlButtons(
     BuildContext context,
+    MusicService musicService,
     List<MusicItem> musicItems,
     MusicItem currentSong,
     bool isPlaying,
@@ -378,6 +396,7 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
                 if (isPlaying) {
                   await _playerService.pause();
                 } else {
+                  musicService.addToRecentlyPlayed(currentSong.id);
                   await _playerService.playSong(
                     currentSong.id,
                     currentSong.musicSource,
@@ -599,6 +618,207 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
         ),
         child: Icon(icon, color: color, size: 20),
       ),
+    );
+  }
+
+  Widget _buildHistoryButton(BuildContext context, MusicService musicService) {
+    return GestureDetector(
+      onTap: () => _showHistorySheet(context, musicService),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: GalaxyTheme.moonGlow.withOpacity(0.3),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.history,
+              color: GalaxyTheme.moonGlow.withOpacity(0.7),
+              size: 16,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              'History',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: GalaxyTheme.moonGlow.withOpacity(0.7),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showHistorySheet(BuildContext context, MusicService musicService) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: GalaxyTheme.deepSpace.withOpacity(0.95),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      isScrollControlled: true,
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          minChildSize: 0.3,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (context, scrollController) {
+            final recentlyPlayed = musicService.recentlyPlayed;
+
+            return Column(
+              children: [
+                Container(
+                  margin: const EdgeInsets.only(top: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: GalaxyTheme.moonGlow.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Listening History',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: GalaxyTheme.moonGlow,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (recentlyPlayed.isNotEmpty)
+                        TextButton.icon(
+                          onPressed: () {
+                            musicService.clearRecentlyPlayed();
+                            Navigator.pop(context);
+                          },
+                          icon: Icon(
+                            Icons.delete_outline,
+                            color: GalaxyTheme.stardustPink,
+                            size: 18,
+                          ),
+                          label: Text(
+                            'Clear',
+                            style: TextStyle(color: GalaxyTheme.stardustPink),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: recentlyPlayed.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.history,
+                                size: 60,
+                                color: GalaxyTheme.moonGlow.withOpacity(0.3),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No listening history yet',
+                                style: TextStyle(
+                                  color: GalaxyTheme.moonGlow.withOpacity(0.6),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
+                          controller: scrollController,
+                          itemCount: recentlyPlayed.length,
+                          itemBuilder: (context, index) {
+                            final song = recentlyPlayed[index];
+                            return ListTile(
+                              leading: Container(
+                                width: 50,
+                                height: 50,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8),
+                                  color: GalaxyTheme.deepSpace,
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: song.albumArt.isNotEmpty
+                                      ? (song.albumArt.startsWith('http')
+                                            ? Image.network(
+                                                song.albumArt,
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (_, __, ___) =>
+                                                    const Icon(
+                                                      Icons.music_note,
+                                                      color: Colors.white54,
+                                                    ),
+                                              )
+                                            : Image.file(
+                                                File(song.albumArt),
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (_, __, ___) =>
+                                                    const Icon(
+                                                      Icons.music_note,
+                                                      color: Colors.white54,
+                                                    ),
+                                              ))
+                                      : const Icon(
+                                          Icons.music_note,
+                                          color: Colors.white54,
+                                        ),
+                                ),
+                              ),
+                              title: Text(
+                                song.title,
+                                style: const TextStyle(color: Colors.white),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: Text(
+                                song.artist,
+                                style: TextStyle(
+                                  color: GalaxyTheme.moonGlow.withOpacity(0.6),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              trailing: Icon(
+                                Icons.play_circle_outline,
+                                color: GalaxyTheme.cyberpunkCyan,
+                              ),
+                              onTap: () {
+                                // Find song index in main list
+                                final mainIndex = musicService.musicItems
+                                    .indexWhere((s) => s.id == song.id);
+                                if (mainIndex != -1) {
+                                  setState(() {
+                                    _currentIndex = mainIndex;
+                                  });
+                                  musicService.addToRecentlyPlayed(song.id);
+                                  _playerService.playSong(
+                                    song.id,
+                                    song.musicSource,
+                                    localFilePath: song.localFilePath,
+                                  );
+                                }
+                                Navigator.pop(context);
+                              },
+                            );
+                          },
+                        ),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 

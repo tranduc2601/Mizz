@@ -6,6 +6,8 @@ import '../../core/localization/app_localization.dart';
 import '../auth/auth_service.dart';
 import '../auth/login_screen.dart';
 import '../music_carousel/music_service.dart';
+import '../library/song_list_screen.dart';
+import '../playlist/playlist_service.dart';
 import 'profile_edit_screen.dart';
 
 /// Enhanced User Profile Widget with Real Data
@@ -24,6 +26,7 @@ class UserProfileViewEnhanced extends StatelessWidget {
     final user = authService.currentUser;
     final colors = ThemeProvider.colorsOf(context);
     final l10n = AppLocalizations.of(context);
+    final playlistService = PlaylistServiceProvider.of(context);
 
     return Container(
       width: 320,
@@ -158,18 +161,45 @@ class UserProfileViewEnhanced extends StatelessWidget {
                   l10n.songs,
                   '${musicService?.totalSongs ?? 0}',
                   Icons.music_note,
+                  onTap: () {
+                    Navigator.of(context).pop(); // Close drawer
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => SongListScreen.library(),
+                      ),
+                    );
+                  },
                 ),
                 _buildStatCard(
                   context,
                   l10n.favorites,
                   '${musicService?.totalFavorites ?? 0}',
                   Icons.favorite,
+                  onTap: () {
+                    Navigator.of(context).pop(); // Close drawer
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => SongListScreen.favorites(),
+                      ),
+                    );
+                  },
                 ),
                 _buildStatCard(
                   context,
                   l10n.playlists,
-                  '0',
+                  '${playlistService.totalPlaylists}',
                   Icons.playlist_play,
+                  onTap: () {
+                    Navigator.of(context).pop(); // Close drawer
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const PlaylistsScreen(),
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
@@ -245,43 +275,47 @@ class UserProfileViewEnhanced extends StatelessWidget {
     BuildContext context,
     String label,
     String value,
-    IconData icon,
-  ) {
+    IconData icon, {
+    VoidCallback? onTap,
+  }) {
     final colors = ThemeProvider.colorsOf(context);
-    return Container(
-      width: 90,
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        gradient: LinearGradient(
-          colors: [
-            Colors.white.withOpacity(0.1),
-            Colors.white.withOpacity(0.05),
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 90,
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          gradient: LinearGradient(
+            colors: [
+              Colors.white.withOpacity(0.1),
+              Colors.white.withOpacity(0.05),
+            ],
+          ),
+          border: Border.all(color: Colors.white.withOpacity(0.2), width: 1),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: colors.accentCyan, size: 24),
+            const SizedBox(height: 8),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.white.withOpacity(0.7),
+              ),
+            ),
           ],
         ),
-        border: Border.all(color: Colors.white.withOpacity(0.2), width: 1),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: colors.accentCyan, size: 24),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              color: Colors.white.withOpacity(0.7),
-            ),
-          ),
-        ],
       ),
     );
   }

@@ -195,7 +195,8 @@ class _Carousel3DState extends State<Carousel3D>
       onHorizontalDragUpdate: _handleDragUpdate,
       onHorizontalDragEnd: _handleDragEnd,
       child: SizedBox(
-        height: 280, // Increased height for new card geometry (center card Y: -14 to 0)
+        height:
+            280, // Increased height for new card geometry (center card Y: -14 to 0)
         child: LayoutBuilder(
           builder: (context, constraints) {
             final centerX = constraints.maxWidth / 2;
@@ -236,16 +237,16 @@ class _Carousel3DState extends State<Carousel3D>
       // All cards positioned in "negative Y space" (visually lower)
       // Center card: Y from -14 to 0 (height = 14 units, positioned at bottom)
       // Side cards: Y from -12 to -2 (height = 10 units, 2-unit gap from center)
-      // 
+      //
       // Height ratio: side = 10/14 = 0.714 of center
       // Y offset: side cards are shifted UP by 2 units relative to center
-      
+
       // Scale determines card height
       // Front card (zDepth > 0.9): scale = 1.0 (14 units)
       // Side cards (zDepth ~ 0): scale = 0.714 (10 units)
       final double scale;
       final double yOffset;
-      
+
       if (zDepth > 0.9) {
         // CENTER CARD: Full size, positioned lower (bottom at Y=0)
         scale = 1.0;
@@ -260,7 +261,8 @@ class _Carousel3DState extends State<Carousel3D>
         // SIDE CARDS: Smaller and shifted UP (higher position = more negative Y offset)
         // 2-unit gap from center at top and bottom
         scale = 0.714;
-        yOffset = -20.0; // Side cards positioned higher (2 unit gap * 10 pixels/unit)
+        yOffset =
+            -20.0; // Side cards positioned higher (2 unit gap * 10 pixels/unit)
       } else {
         // Back cards fade smaller and stay higher
         final t = (zDepth + 0.7) / 0.4; // 0 to 1
@@ -352,9 +354,9 @@ class MusicCard3D extends StatelessWidget {
   final Color shadowColor;
   final VoidCallback? onMenuTap;
 
-  // Card dimensions: 16:9 landscape ratio
-  static const double cardWidth = 280;
-  static const double cardHeight = 158; // 280 / (16/9) ≈ 158
+  // Card dimensions: 16:9 landscape ratio (increased 30%)
+  static const double cardWidth = 364;
+  static const double cardHeight = 205; // 364 / (16/9) ≈ 205
 
   const MusicCard3D({
     super.key,
@@ -443,9 +445,9 @@ class MusicCard3D extends StatelessWidget {
             // Song info overlay (only on front card)
             if (isFront)
               Positioned(
-                left: 12,
-                right: 12,
-                bottom: 10,
+                left: 16,
+                right: 16,
+                bottom: 14,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
@@ -454,19 +456,19 @@ class MusicCard3D extends StatelessWidget {
                       item.title,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 14,
+                        fontSize: 18,
                         fontWeight: FontWeight.bold,
                         shadows: [Shadow(color: Colors.black54, blurRadius: 4)],
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
                     Text(
                       item.artist,
                       style: TextStyle(
                         color: Colors.white.withOpacity(0.8),
-                        fontSize: 11,
+                        fontSize: 14,
                         shadows: const [
                           Shadow(color: Colors.black54, blurRadius: 4),
                         ],

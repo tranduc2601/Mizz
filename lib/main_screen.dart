@@ -12,6 +12,7 @@ import 'core/auth_provider.dart';
 import 'core/settings/settings_screen.dart';
 import 'core/localization/app_localization.dart';
 import 'core/youtube_download_service.dart';
+import 'core/download_manager.dart';
 import 'features/user_profile/user_profile_view_enhanced.dart';
 import 'features/music_carousel/music_service.dart';
 import 'features/listening_history/listening_history_screen.dart';
@@ -30,6 +31,7 @@ class MainScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
+    final downloadManager = DownloadManagerProvider.of(context);
 
     return Scaffold(
       key: scaffoldKey,
@@ -41,6 +43,17 @@ class MainScreen extends StatelessWidget {
           children: [
             // Custom AppBar with Glass Effect
             _buildGlassAppBar(context, scaffoldKey),
+
+            // Download Progress Bar (shows when downloading)
+            ListenableBuilder(
+              listenable: downloadManager,
+              builder: (context, _) {
+                if (!downloadManager.hasActiveDownloads) {
+                  return const SizedBox.shrink();
+                }
+                return _buildDownloadProgressBar(context, downloadManager);
+              },
+            ),
 
             // Main Content - 3D Carousel
             Expanded(
@@ -69,6 +82,95 @@ class MainScreen extends StatelessWidget {
           authService: AuthProvider.of(context),
           musicService: MusicServiceProvider.of(context),
         ),
+      ),
+    );
+  }
+
+  /// Download Progress Bar - shows under AppBar when downloading
+  Widget _buildDownloadProgressBar(
+    BuildContext context,
+    DownloadManager downloadManager,
+  ) {
+    final colors = ThemeProvider.colorsOf(context);
+    final task = downloadManager.currentTask;
+    if (task == null) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        gradient: LinearGradient(
+          colors: [
+            colors.nebulaPrimary.withOpacity(0.8),
+            colors.cosmicAccent.withOpacity(0.6),
+          ],
+        ),
+        border: Border.all(color: colors.accentCyan.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          // Download icon
+          Icon(
+            task.isComplete
+                ? Icons.check_circle
+                : task.isFailed
+                ? Icons.error
+                : Icons.downloading,
+            color: task.isComplete
+                ? colors.auroraGreen
+                : task.isFailed
+                ? colors.stardustPink
+                : colors.accentCyan,
+            size: 20,
+          ),
+          const SizedBox(width: 12),
+          // Song title and progress
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  task.songTitle,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: task.progress,
+                    backgroundColor: colors.deepSpace.withOpacity(0.3),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      task.isComplete
+                          ? colors.auroraGreen
+                          : task.isFailed
+                          ? colors.stardustPink
+                          : colors.accentCyan,
+                    ),
+                    minHeight: 4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Percentage
+          Text(
+            '${(task.progress * 100).toInt()}%',
+            style: TextStyle(
+              color: colors.accentCyan,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -329,7 +431,7 @@ class MainScreen extends StatelessWidget {
       context: context,
       builder: (BuildContext dialogContext) {
         return StatefulBuilder(
-          builder: (context, setState) {
+          builder: (builderContext, setState) {
             return Dialog(
               backgroundColor: Colors.transparent,
               child: Container(
@@ -905,20 +1007,24 @@ class MainScreen extends StatelessWidget {
                                     YouTubeDownloadService().isYouTubeUrl(
                                       songSource,
                                     )) {
-                                  // Show download dialog after a short delay
-                                  Future.delayed(
-                                    const Duration(milliseconds: 500),
-                                    () {
-                                      if (context.mounted) {
-                                        _showYouTubeDownloadDialog(
-                                          context,
-                                          songId: songId,
-                                          songTitle: songTitle,
-                                          youtubeUrl: songSource,
-                                        );
-                                      }
-                                    },
-                                  );
+                                  // Show download dialog after dialog animation completes
+                                  WidgetsBinding.instance.addPostFrameCallback((
+                                    _,
+                                  ) {
+                                    Future.delayed(
+                                      const Duration(milliseconds: 300),
+                                      () {
+                                        if (context.mounted) {
+                                          _showYouTubeDownloadDialog(
+                                            context,
+                                            songId: songId,
+                                            songTitle: songTitle,
+                                            youtubeUrl: songSource,
+                                          );
+                                        }
+                                      },
+                                    );
+                                  });
                                 }
                               },
                               style: ElevatedButton.styleFrom(
@@ -958,233 +1064,144 @@ class MainScreen extends StatelessWidget {
     final colors = ThemeProvider.colorsOf(context);
     final l10n = AppLocalizations.of(context);
 
-    double downloadProgress = 0.0;
-    String statusMessage = '';
-    bool isDownloading = false;
-    bool downloadComplete = false;
-
     showDialog(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: true, // Allow dismissing by tapping outside
       builder: (BuildContext dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return Dialog(
-              backgroundColor: Colors.transparent,
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 400),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      colors.nebulaPrimary.withOpacity(0.95),
-                      colors.cosmicAccent.withOpacity(0.95),
-                    ],
-                  ),
-                  border: Border.all(
-                    color: colors.moonGlow.withOpacity(0.3),
-                    width: 1,
-                  ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Icon
-                      Icon(
-                        isDownloading
-                            ? Icons.downloading
-                            : downloadComplete
-                            ? Icons.check_circle
-                            : Icons.download_for_offline,
-                        size: 48,
-                        color: downloadComplete
-                            ? colors.auroraGreen
-                            : colors.accentCyan,
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Title
-                      Text(
-                        downloadComplete
-                            ? l10n.downloadComplete
-                            : isDownloading
-                            ? l10n.downloadingAudio
-                            : l10n.downloadForFasterPlayback,
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Description or progress
-                      if (!isDownloading && !downloadComplete)
-                        Text(
-                          l10n.youtubeDownloadDescription,
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(
-                                color: colors.moonGlow.withOpacity(0.8),
-                              ),
-                          textAlign: TextAlign.center,
-                        )
-                      else if (isDownloading) ...[
-                        // Progress bar
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: LinearProgressIndicator(
-                            value: downloadProgress,
-                            backgroundColor: colors.deepSpace.withOpacity(0.3),
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              colors.accentCyan,
-                            ),
-                            minHeight: 8,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          '${(downloadProgress * 100).toInt()}%',
-                          style: Theme.of(context).textTheme.bodyLarge
-                              ?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: colors.accentCyan,
-                              ),
-                        ),
-                        if (statusMessage.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            statusMessage,
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(
-                                  color: colors.moonGlow.withOpacity(0.6),
-                                ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ] else if (downloadComplete)
-                        Text(
-                          l10n.downloadCompleteDescription,
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(color: colors.auroraGreen),
-                          textAlign: TextAlign.center,
-                        ),
-
-                      const SizedBox(height: 24),
-
-                      // Buttons
-                      if (!isDownloading && !downloadComplete)
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [
-                            // Skip button
-                            TextButton(
-                              onPressed: () =>
-                                  Navigator.of(dialogContext).pop(),
-                              child: Text(
-                                l10n.skipForNow,
-                                style: TextStyle(
-                                  color: colors.moonGlow.withOpacity(0.7),
-                                ),
-                              ),
-                            ),
-                            // Download button
-                            ElevatedButton.icon(
-                              onPressed: () async {
-                                setState(() {
-                                  isDownloading = true;
-                                  downloadProgress = 0;
-                                  statusMessage = '';
-                                });
-
-                                final downloadService =
-                                    YouTubeDownloadService();
-                                final localPath = await downloadService
-                                    .downloadYouTubeAudio(
-                                      youtubeUrl,
-                                      songTitle: songTitle,
-                                      onProgress: (progress) {
-                                        setState(() {
-                                          downloadProgress = progress;
-                                        });
-                                      },
-                                      onStatus: (status) {
-                                        setState(() {
-                                          statusMessage = status;
-                                        });
-                                      },
-                                    );
-
-                                if (localPath != null && context.mounted) {
-                                  // Update song with local file path
-                                  final musicService = MusicServiceProvider.of(
-                                    context,
-                                  );
-                                  musicService.updateLocalFilePath(
-                                    songId,
-                                    localPath,
-                                  );
-
-                                  setState(() {
-                                    downloadComplete = true;
-                                    isDownloading = false;
-                                  });
-                                } else {
-                                  // Download failed
-                                  setState(() {
-                                    isDownloading = false;
-                                  });
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(l10n.downloadFailed),
-                                        backgroundColor: colors.stardustPink,
-                                      ),
-                                    );
-                                  }
-                                  Navigator.of(dialogContext).pop();
-                                }
-                              },
-                              icon: const Icon(Icons.download),
-                              label: Text(l10n.downloadNow),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: colors.accentCyan,
-                                foregroundColor: colors.deepSpace,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 20,
-                                  vertical: 12,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                            ),
-                          ],
-                        )
-                      else if (downloadComplete)
-                        ElevatedButton(
-                          onPressed: () => Navigator.of(dialogContext).pop(),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: colors.auroraGreen,
-                            foregroundColor: colors.deepSpace,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 32,
-                              vertical: 12,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: Text(l10n.done),
-                        ),
-                    ],
-                  ),
-                ),
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 400),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  colors.nebulaPrimary.withOpacity(0.95),
+                  colors.cosmicAccent.withOpacity(0.95),
+                ],
               ),
-            );
-          },
+              border: Border.all(
+                color: colors.moonGlow.withOpacity(0.3),
+                width: 1,
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Icon
+                  Icon(
+                    Icons.download_for_offline,
+                    size: 48,
+                    color: colors.accentCyan,
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Title
+                  Text(
+                    l10n.downloadForFasterPlayback,
+                    style: Theme.of(dialogContext).textTheme.titleLarge
+                        ?.copyWith(fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Description
+                  Text(
+                    l10n.youtubeDownloadDescription,
+                    style: Theme.of(dialogContext).textTheme.bodyMedium
+                        ?.copyWith(color: colors.moonGlow.withOpacity(0.8)),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Tip: Tap outside to minimize and download in background',
+                    style: Theme.of(dialogContext).textTheme.bodySmall
+                        ?.copyWith(
+                          color: colors.accentCyan.withOpacity(0.7),
+                          fontStyle: FontStyle.italic,
+                        ),
+                    textAlign: TextAlign.center,
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // Buttons
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      // Skip button
+                      TextButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        child: Text(
+                          l10n.skipForNow,
+                          style: TextStyle(
+                            color: colors.moonGlow.withOpacity(0.7),
+                          ),
+                        ),
+                      ),
+                      // Download button
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          // Start background download
+                          final downloadManager = DownloadManagerProvider.of(
+                            context,
+                          );
+                          final musicService = MusicServiceProvider.of(context);
+
+                          downloadManager.startDownload(
+                            songId: songId,
+                            songTitle: songTitle,
+                            youtubeUrl: youtubeUrl,
+                            onComplete: (localPath) {
+                              musicService.updateLocalFilePath(
+                                songId,
+                                localPath,
+                              );
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Downloaded: $songTitle'),
+                                    backgroundColor: colors.auroraGreen,
+                                  ),
+                                );
+                              }
+                            },
+                          );
+
+                          Navigator.of(dialogContext).pop();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Downloading in background: $songTitle',
+                              ),
+                              backgroundColor: colors.accentCyan,
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.download),
+                        label: Text(l10n.downloadNow),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: colors.accentCyan,
+                          foregroundColor: colors.deepSpace,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 12,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
         );
       },
     );

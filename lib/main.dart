@@ -6,9 +6,11 @@ import 'core/feature_registry.dart';
 import 'core/auth_provider.dart';
 import 'core/localization/app_localization.dart';
 import 'core/background_audio_handler.dart';
+import 'core/download_manager.dart';
 import 'features/music_carousel/music_carousel_feature.dart';
 import 'features/music_carousel/music_service.dart';
 import 'features/music_carousel/music_player_service.dart';
+import 'features/playlist/playlist_service.dart';
 import 'features/user_profile/user_profile_feature.dart';
 import 'features/auth/auth_service.dart';
 import 'features/auth/login_screen.dart';
@@ -74,6 +76,8 @@ class _GalaxyMusicAppState extends State<GalaxyMusicApp> {
   late final AuthService authService;
   late final MusicService musicService;
   late final MusicPlayerService playerService;
+  late final PlaylistService playlistService;
+  late final DownloadManager downloadManager;
   late final LocalizationController localizationController;
   late final ThemeController themeController;
 
@@ -83,8 +87,13 @@ class _GalaxyMusicAppState extends State<GalaxyMusicApp> {
     authService = AuthService();
     musicService = MusicService();
     playerService = MusicPlayerService();
+    playlistService = PlaylistService();
+    downloadManager = DownloadManager();
     localizationController = LocalizationController(locale: AppLocale.english);
     themeController = ThemeController();
+
+    // Initialize playlist service
+    playlistService.init();
   }
 
   @override
@@ -99,27 +108,33 @@ class _GalaxyMusicAppState extends State<GalaxyMusicApp> {
             musicService: musicService,
             child: MusicPlayerServiceProvider(
               playerService: playerService,
-              child: ListenableBuilder(
-                listenable: Listenable.merge([
-                  localizationController,
-                  themeController,
-                ]),
-                builder: (context, child) {
-                  return MaterialApp(
-                    title: 'Mizz',
-                    debugShowCheckedModeBanner: false,
-                    theme: themeController.themeData,
-                    home: ListenableBuilder(
-                      listenable: authService,
-                      builder: (context, child) {
-                        if (authService.isAuthenticated) {
-                          return const MainScreen();
-                        }
-                        return LoginScreen(authService: authService);
-                      },
-                    ),
-                  );
-                },
+              child: PlaylistServiceProvider(
+                service: playlistService,
+                child: DownloadManagerProvider(
+                  manager: downloadManager,
+                  child: ListenableBuilder(
+                    listenable: Listenable.merge([
+                      localizationController,
+                      themeController,
+                    ]),
+                    builder: (context, child) {
+                      return MaterialApp(
+                        title: 'Mizz',
+                        debugShowCheckedModeBanner: false,
+                        theme: themeController.themeData,
+                        home: ListenableBuilder(
+                          listenable: authService,
+                          builder: (context, child) {
+                            if (authService.isAuthenticated) {
+                              return const MainScreen();
+                            }
+                            return LoginScreen(authService: authService);
+                          },
+                        ),
+                      );
+                    },
+                  ),
+                ),
               ),
             ),
           ),
