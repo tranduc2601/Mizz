@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:palette_generator/palette_generator.dart';
 import '../../core/theme.dart';
+import '../../core/download_manager.dart';
 import 'music_model.dart';
 import 'music_service.dart';
 import 'music_player_service.dart' show MusicPlayerService, MusicLoopMode;
@@ -33,6 +34,13 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
     _playerService.onSongComplete = (songId) {
       _playNextSong();
     };
+
+    // Set up notification transport control callbacks
+    // This makes Next/Previous buttons work from the notification
+    _playerService.setupNotificationCallbacks(
+      onSkipToNext: _playNextSong,
+      onSkipToPrevious: _playPreviousSong,
+    );
   }
 
   /// Play the next song automatically
@@ -58,7 +66,10 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
       nextIndex = (actualCurrentIndex + 1) % musicItems.length;
     } else {
       nextIndex = actualCurrentIndex + 1;
-      if (nextIndex >= musicItems.length) return;
+      // When auto-play reaches the end of the list, loop back to the first song
+      if (nextIndex >= musicItems.length) {
+        nextIndex = 0;
+      }
     }
 
     setState(() {
@@ -71,6 +82,9 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
       nextSong.id,
       nextSong.musicSource,
       localFilePath: nextSong.localFilePath,
+      title: nextSong.title,
+      artist: nextSong.artist,
+      artworkUrl: nextSong.albumArt,
     );
   }
 
@@ -110,6 +124,9 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
       prevSong.id,
       prevSong.musicSource,
       localFilePath: prevSong.localFilePath,
+      title: prevSong.title,
+      artist: prevSong.artist,
+      artworkUrl: prevSong.albumArt,
     );
   }
 
@@ -185,6 +202,12 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
 
         return LayoutBuilder(
           builder: (context, constraints) {
+            // Calculate the carousel section height: total height minus controls
+            // Controls take approximately 300px (history, progress, buttons, volume, spacing)
+            final controlsHeight = 300.0;
+            final carouselHeight = (constraints.maxHeight - controlsHeight)
+                .clamp(280.0, double.infinity);
+
             return SingleChildScrollView(
               child: ConstrainedBox(
                 constraints: BoxConstraints(minHeight: constraints.maxHeight),
@@ -192,7 +215,8 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     // Top section: Carousel only - centered
-                    Expanded(
+                    SizedBox(
+                      height: carouselHeight,
                       child: Center(
                         child: Carousel3D(
                           items: musicItems,
@@ -401,6 +425,9 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
                     currentSong.id,
                     currentSong.musicSource,
                     localFilePath: currentSong.localFilePath,
+                    title: currentSong.title,
+                    artist: currentSong.artist,
+                    artworkUrl: currentSong.albumArt,
                   );
                 }
               } catch (e) {
@@ -781,13 +808,38 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
-                              subtitle: Text(
-                                song.artist,
-                                style: TextStyle(
-                                  color: GalaxyTheme.moonGlow.withOpacity(0.6),
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                              subtitle: Row(
+                                children: [
+                                  // Source indicator icon
+                                  Icon(
+                                    song.hasLocalCache
+                                        ? Icons.folder
+                                        : (song.isYouTubeSource
+                                              ? Icons.cloud
+                                              : (song.musicSource.startsWith(
+                                                      'http',
+                                                    )
+                                                    ? Icons.link
+                                                    : Icons.folder)),
+                                    size: 12,
+                                    color: song.hasLocalCache
+                                        ? GalaxyTheme.auroraGreen
+                                        : GalaxyTheme.cyberpunkCyan,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Expanded(
+                                    child: Text(
+                                      song.artist,
+                                      style: TextStyle(
+                                        color: GalaxyTheme.moonGlow.withOpacity(
+                                          0.6,
+                                        ),
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
                               ),
                               trailing: Icon(
                                 Icons.play_circle_outline,
@@ -806,6 +858,9 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
                                     song.id,
                                     song.musicSource,
                                     localFilePath: song.localFilePath,
+                                    title: song.title,
+                                    artist: song.artist,
+                                    artworkUrl: song.albumArt,
                                   );
                                 }
                                 Navigator.pop(context);
@@ -850,6 +905,41 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
     MusicService musicService,
     MusicItem item,
   ) {
+    // Determine source type
+    final isYouTube = item.isYouTubeSource;
+    final isLocalFile = !item.musicSource.startsWith('http');
+    final hasLocalCache = item.hasLocalCache;
+    final downloadManager = DownloadManagerProvider.of(context);
+    final isDownloading = downloadManager.isDownloading(item.id);
+
+    String sourceLabel;
+    IconData sourceIcon;
+    Color sourceColor;
+
+    if (isLocalFile) {
+      sourceLabel = '📁 Nguồn: File cục bộ';
+      sourceIcon = Icons.folder;
+      sourceColor = GalaxyTheme.auroraGreen;
+    } else if (isYouTube) {
+      if (hasLocalCache) {
+        sourceLabel = '✅ Nguồn: YouTube (đã tải về)';
+        sourceIcon = Icons.download_done;
+        sourceColor = GalaxyTheme.auroraGreen;
+      } else if (isDownloading) {
+        sourceLabel = '⬇️ Nguồn: YouTube (đang tải...)';
+        sourceIcon = Icons.downloading;
+        sourceColor = GalaxyTheme.galaxyBlue;
+      } else {
+        sourceLabel = '🔗 Nguồn: YouTube (chưa tải)';
+        sourceIcon = Icons.cloud;
+        sourceColor = GalaxyTheme.cyberpunkCyan;
+      }
+    } else {
+      sourceLabel = '🌐 Nguồn: URL trực tiếp';
+      sourceIcon = Icons.link;
+      sourceColor = GalaxyTheme.cyberpunkCyan;
+    }
+
     showModalBottomSheet(
       context: context,
       backgroundColor: GalaxyTheme.deepSpace.withOpacity(0.95),
@@ -857,77 +947,226 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                margin: const EdgeInsets.only(top: 8),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: GalaxyTheme.moonGlow.withOpacity(0.3),
-                  borderRadius: BorderRadius.circular(2),
-                ),
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(top: 8),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: GalaxyTheme.moonGlow.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Source info header
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 16),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: sourceColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: sourceColor.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(sourceIcon, color: sourceColor, size: 24),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                sourceLabel,
+                                style: TextStyle(
+                                  color: sourceColor,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              if (isYouTube && !hasLocalCache)
+                                Text(
+                                  'Tải về để phát nhanh hơn',
+                                  style: TextStyle(
+                                    color: GalaxyTheme.moonGlow.withOpacity(
+                                      0.6,
+                                    ),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Download button (only for YouTube without local cache)
+                  if (isYouTube && !hasLocalCache)
+                    _buildDownloadMenuItem(
+                      context,
+                      musicService,
+                      item,
+                      setModalState,
+                    ),
+
+                  ListTile(
+                    leading: Icon(
+                      Icons.playlist_add,
+                      color: GalaxyTheme.moonGlow,
+                    ),
+                    title: Text(
+                      'Add to Playlist',
+                      style: TextStyle(color: GalaxyTheme.moonGlow),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Coming soon!')),
+                      );
+                    },
+                  ),
+                  ListTile(
+                    leading: Icon(
+                      item.isFavorite ? Icons.favorite : Icons.favorite_border,
+                      color: item.isFavorite
+                          ? GalaxyTheme.cyberpunkPink
+                          : GalaxyTheme.moonGlow,
+                    ),
+                    title: Text(
+                      item.isFavorite
+                          ? 'Remove from Favorites'
+                          : 'Add to Favorites',
+                      style: TextStyle(color: GalaxyTheme.moonGlow),
+                    ),
+                    onTap: () {
+                      musicService.toggleFavorite(item.id);
+                      Navigator.pop(context);
+                    },
+                  ),
+                  const Divider(color: Colors.white24),
+                  ListTile(
+                    leading: Icon(Icons.edit, color: GalaxyTheme.auroraGreen),
+                    title: Text(
+                      'Edit Song',
+                      style: TextStyle(color: GalaxyTheme.moonGlow),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showEditDialog(context, musicService, item);
+                    },
+                  ),
+                  ListTile(
+                    leading: Icon(
+                      Icons.delete,
+                      color: GalaxyTheme.stardustPink,
+                    ),
+                    title: Text(
+                      'Delete',
+                      style: TextStyle(color: GalaxyTheme.stardustPink),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showDeleteDialog(context, musicService, item);
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                ],
               ),
-              const SizedBox(height: 16),
-              ListTile(
-                leading: Icon(Icons.playlist_add, color: GalaxyTheme.moonGlow),
-                title: Text(
-                  'Add to Playlist',
-                  style: TextStyle(color: GalaxyTheme.moonGlow),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(const SnackBar(content: Text('Coming soon!')));
-                },
-              ),
-              ListTile(
-                leading: Icon(
-                  item.isFavorite ? Icons.favorite : Icons.favorite_border,
-                  color: item.isFavorite
-                      ? GalaxyTheme.cyberpunkPink
-                      : GalaxyTheme.moonGlow,
-                ),
-                title: Text(
-                  item.isFavorite
-                      ? 'Remove from Favorites'
-                      : 'Add to Favorites',
-                  style: TextStyle(color: GalaxyTheme.moonGlow),
-                ),
-                onTap: () {
-                  musicService.toggleFavorite(item.id);
-                  Navigator.pop(context);
-                },
-              ),
-              const Divider(color: Colors.white24),
-              ListTile(
-                leading: Icon(Icons.edit, color: GalaxyTheme.auroraGreen),
-                title: Text(
-                  'Edit Song',
-                  style: TextStyle(color: GalaxyTheme.moonGlow),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showEditDialog(context, musicService, item);
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.delete, color: GalaxyTheme.stardustPink),
-                title: Text(
-                  'Delete',
-                  style: TextStyle(color: GalaxyTheme.stardustPink),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showDeleteDialog(context, musicService, item);
-                },
-              ),
-              const SizedBox(height: 16),
-            ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildDownloadMenuItem(
+    BuildContext context,
+    MusicService musicService,
+    MusicItem item,
+    StateSetter setModalState,
+  ) {
+    final downloadManager = DownloadManagerProvider.of(context);
+
+    // Check current download status
+    final isCurrentlyDownloading = downloadManager.isDownloading(item.id);
+    final currentTask = downloadManager.getTask(item.id);
+
+    return ListenableBuilder(
+      listenable: downloadManager,
+      builder: (context, _) {
+        final downloading = downloadManager.isDownloading(item.id);
+        final task = downloadManager.getTask(item.id);
+        final progress = task?.progress ?? 0.0;
+
+        return ListTile(
+          leading: downloading
+              ? SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    value: progress > 0.1 ? progress : null,
+                    strokeWidth: 2,
+                    color: GalaxyTheme.auroraGreen,
+                  ),
+                )
+              : Icon(Icons.download, color: GalaxyTheme.auroraGreen),
+          title: Text(
+            downloading
+                ? 'Đang tải... ${(progress * 100).toInt()}%'
+                : 'Tải về (MP3)',
+            style: TextStyle(color: GalaxyTheme.auroraGreen),
           ),
+          subtitle: Text(
+            downloading
+                ? task?.status ?? 'Đang xử lý...'
+                : 'Lưu để phát nhanh hơn',
+            style: TextStyle(
+              color: GalaxyTheme.moonGlow.withOpacity(0.5),
+              fontSize: 12,
+            ),
+          ),
+          onTap: downloading
+              ? null
+              : () {
+                  // Close menu first
+                  Navigator.pop(context);
+
+                  // Start download via DownloadManager (shows in navbar)
+                  downloadManager.startDownload(
+                    songId: item.id,
+                    songTitle: item.title,
+                    youtubeUrl: item.musicSource,
+                    onComplete: (localPath) {
+                      // Update the song with local file path
+                      musicService.updateLocalFilePath(item.id, localPath);
+
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('✅ Đã tải về: ${item.title}'),
+                            backgroundColor: GalaxyTheme.auroraGreen,
+                          ),
+                        );
+                      }
+                    },
+                  );
+
+                  // Show feedback
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('⬇️ Bắt đầu tải: ${item.title}'),
+                      backgroundColor: GalaxyTheme.cyberpunkCyan,
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                },
         );
       },
     );

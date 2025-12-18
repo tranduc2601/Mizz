@@ -131,11 +131,83 @@ class DownloadManager extends ChangeNotifier {
       }
 
       // Fallback to any available stream
-      audioStream ??= audioStreams.isNotEmpty
-          ? audioStreams.first
-          : manifest.audioOnly.withHighestBitrate();
+      if (audioStream == null) {
+        if (audioStreams.isNotEmpty) {
+          audioStream = audioStreams.first;
+        } else if (manifest.audioOnly.isNotEmpty) {
+          audioStream = manifest.audioOnly.withHighestBitrate();
+        } else {
+          // No audio stream found, try muxed streams
+          final muxedStreams = manifest.muxed.toList();
+          if (muxedStreams.isEmpty) {
+            task.status = 'No audio stream found';
+            task.isFailed = true;
+            notifyListeners();
+            return;
+          }
+          // Use muxed stream as fallback
+          muxedStreams.sort(
+            (a, b) => a.size.totalBytes.compareTo(b.size.totalBytes),
+          );
+          final muxedStream = muxedStreams.first;
+          extension = muxedStream.container.name.toLowerCase();
 
-      extension = audioStream.container.name.toLowerCase();
+          task.status = 'Downloading (video)...';
+          task.progress = 0.15;
+          notifyListeners();
+
+          // Create file path for muxed stream
+          final cacheDir = await _getMusicCacheDir();
+          final sanitizedTitle = task.songTitle
+              .replaceAll(RegExp(r'[<>:"/\\|?*]'), '_')
+              .replaceAll(RegExp(r'\s+'), '_');
+          final fileName = '${videoId}_$sanitizedTitle.$extension';
+          final localFile = File('${cacheDir.path}/$fileName');
+
+          if (await localFile.exists()) {
+            await localFile.delete();
+          }
+
+          final streamUrl = muxedStream.url;
+          final response = await http.Client().send(
+            http.Request('GET', streamUrl),
+          );
+
+          final totalBytes = muxedStream.size.totalBytes;
+          int downloadedBytes = 0;
+          final fileStream = localFile.openWrite();
+
+          await for (final chunk in response.stream) {
+            fileStream.add(chunk);
+            downloadedBytes += chunk.length;
+
+            final downloadProgress = downloadedBytes / totalBytes;
+            task.progress = 0.15 + downloadProgress * 0.8;
+            task.status = 'Downloading... ${(task.progress * 100).toInt()}%';
+            notifyListeners();
+          }
+
+          await fileStream.flush();
+          await fileStream.close();
+
+          task.status = 'Complete!';
+          task.progress = 1.0;
+          task.isComplete = true;
+          task.localPath = localFile.path;
+          notifyListeners();
+
+          debugPrint('✅ Downloaded (muxed): ${localFile.path}');
+          onComplete(localFile.path);
+
+          Future.delayed(const Duration(seconds: 3), () {
+            _activeTasks.remove(task.songId);
+            notifyListeners();
+          });
+          return;
+        }
+      }
+
+      extension = audioStream!.container.name.toLowerCase();
 
       task.status = 'Downloading...';
       task.progress = 0.15;
@@ -226,13 +298,46 @@ class DownloadManager extends ChangeNotifier {
   }
 
   Future<Directory> _getMusicCacheDir() async {
+    // Try to use external storage "Mizz songs" folder first
+    try {
+      // On Android, try to access external storage
+      if (Platform.isAndroid) {
+        final externalDir = Directory('/storage/emulated/0/Mizz songs');
+        if (await externalDir.exists()) {
+          debugPrint('📁 Using external folder: ${externalDir.path}');
+          return externalDir;
+        }
+        // Try to create it
+        try {
+          await externalDir.create(recursive: true);
+          debugPrint('📁 Created external folder: ${externalDir.path}');
+          return externalDir;
+        } catch (e) {
+          debugPrint('⚠️ Cannot create external folder: $e');
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ External storage error: $e');
+    }
+
+    // Fallback to app documents directory
     final appDir = await getApplicationDocumentsDirectory();
-    final musicDir = Directory('${appDir.path}/music_cache');
+    final musicDir = Directory('${appDir.path}/Mizz songs');
     if (!await musicDir.exists()) {
       await musicDir.create(recursive: true);
     }
+    debugPrint('📁 Using app folder: ${musicDir.path}');
     return musicDir;
   }
+
+  /// Check if a song is currently downloading
+  bool isDownloading(String songId) {
+    final task = _activeTasks[songId];
+    return task != null && !task.isComplete && !task.isFailed;
+  }
+
+  /// Get download task for a song
+  DownloadTask? getTask(String songId) => _activeTasks[songId];
 
   /// Cancel a download
   void cancelDownload(String songId) {

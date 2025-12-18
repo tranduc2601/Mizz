@@ -3,25 +3,30 @@ import 'package:flutter/services.dart';
 import 'core/theme.dart';
 import 'core/theme_provider.dart';
 import 'core/feature_registry.dart';
-import 'core/auth_provider.dart';
 import 'core/localization/app_localization.dart';
 import 'core/background_audio_handler.dart';
+import 'core/media_notification_handler.dart';
 import 'core/download_manager.dart';
 import 'features/music_carousel/music_carousel_feature.dart';
 import 'features/music_carousel/music_service.dart';
 import 'features/music_carousel/music_player_service.dart';
 import 'features/playlist/playlist_service.dart';
 import 'features/user_profile/user_profile_feature.dart';
-import 'features/auth/auth_service.dart';
-import 'features/auth/login_screen.dart';
 import 'main_screen.dart';
 
 Future<void> main() async {
   // Initialize the app
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Background Audio Service
+  // Initialize Background Audio Service (legacy)
   await initAudioService();
+
+  // Initialize Media Notification Service (Android 13+ style)
+  try {
+    await initMizzAudioService();
+  } catch (e) {
+    debugPrint('⚠️ Failed to initialize media notification: $e');
+  }
 
   // Set preferred orientations
   SystemChrome.setPreferredOrientations([
@@ -73,7 +78,6 @@ class GalaxyMusicApp extends StatefulWidget {
 }
 
 class _GalaxyMusicAppState extends State<GalaxyMusicApp> {
-  late final AuthService authService;
   late final MusicService musicService;
   late final MusicPlayerService playerService;
   late final PlaylistService playlistService;
@@ -84,7 +88,6 @@ class _GalaxyMusicAppState extends State<GalaxyMusicApp> {
   @override
   void initState() {
     super.initState();
-    authService = AuthService();
     musicService = MusicService();
     playerService = MusicPlayerService();
     playlistService = PlaylistService();
@@ -102,38 +105,27 @@ class _GalaxyMusicAppState extends State<GalaxyMusicApp> {
       controller: themeController,
       child: LocalizationProvider(
         controller: localizationController,
-        child: AuthProvider(
-          authService: authService,
-          child: MusicServiceProvider(
-            musicService: musicService,
-            child: MusicPlayerServiceProvider(
-              playerService: playerService,
-              child: PlaylistServiceProvider(
-                service: playlistService,
-                child: DownloadManagerProvider(
-                  manager: downloadManager,
-                  child: ListenableBuilder(
-                    listenable: Listenable.merge([
-                      localizationController,
-                      themeController,
-                    ]),
-                    builder: (context, child) {
-                      return MaterialApp(
-                        title: 'Mizz',
-                        debugShowCheckedModeBanner: false,
-                        theme: themeController.themeData,
-                        home: ListenableBuilder(
-                          listenable: authService,
-                          builder: (context, child) {
-                            if (authService.isAuthenticated) {
-                              return const MainScreen();
-                            }
-                            return LoginScreen(authService: authService);
-                          },
-                        ),
-                      );
-                    },
-                  ),
+        child: MusicServiceProvider(
+          musicService: musicService,
+          child: MusicPlayerServiceProvider(
+            playerService: playerService,
+            child: PlaylistServiceProvider(
+              service: playlistService,
+              child: DownloadManagerProvider(
+                manager: downloadManager,
+                child: ListenableBuilder(
+                  listenable: Listenable.merge([
+                    localizationController,
+                    themeController,
+                  ]),
+                  builder: (context, child) {
+                    return MaterialApp(
+                      title: 'Mizz',
+                      debugShowCheckedModeBanner: false,
+                      theme: themeController.themeData,
+                      home: const MainScreen(),
+                    );
+                  },
                 ),
               ),
             ),

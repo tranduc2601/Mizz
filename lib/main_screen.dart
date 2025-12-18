@@ -8,7 +8,6 @@ import 'core/theme.dart';
 import 'core/theme_provider.dart';
 import 'core/feature_registry.dart';
 import 'core/animated_background.dart';
-import 'core/auth_provider.dart';
 import 'core/settings/settings_screen.dart';
 import 'core/localization/app_localization.dart';
 import 'core/youtube_download_service.dart';
@@ -79,7 +78,6 @@ class MainScreen extends StatelessWidget {
       // Right Drawer - User Profile
       endDrawer: Drawer(
         child: UserProfileViewEnhanced(
-          authService: AuthProvider.of(context),
           musicService: MusicServiceProvider.of(context),
         ),
       ),

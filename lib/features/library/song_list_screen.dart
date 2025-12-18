@@ -148,6 +148,9 @@ class _SongListScreenState extends State<SongListScreen> {
       song.id,
       song.musicSource,
       localFilePath: song.localFilePath,
+      title: song.title,
+      artist: song.artist,
+      artworkUrl: song.albumArt,
     );
   }
 }

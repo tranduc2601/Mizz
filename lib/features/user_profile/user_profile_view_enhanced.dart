@@ -1,29 +1,22 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 import '../../core/theme_provider.dart';
 import '../../core/localization/app_localization.dart';
-import '../auth/auth_service.dart';
-import '../auth/login_screen.dart';
 import '../music_carousel/music_service.dart';
 import '../library/song_list_screen.dart';
 import '../playlist/playlist_service.dart';
-import 'profile_edit_screen.dart';
 
 /// Enhanced User Profile Widget with Real Data
 class UserProfileViewEnhanced extends StatelessWidget {
-  final AuthService authService;
   final MusicService? musicService;
 
   const UserProfileViewEnhanced({
     super.key,
-    required this.authService,
     this.musicService,
   });
 
   @override
   Widget build(BuildContext context) {
-    final user = authService.currentUser;
     final colors = ThemeProvider.colorsOf(context);
     final l10n = AppLocalizations.of(context);
     final playlistService = PlaylistServiceProvider.of(context);
@@ -70,69 +63,35 @@ class UserProfileViewEnhanced extends StatelessWidget {
             const SizedBox(height: 20),
 
             // User Avatar
-            GestureDetector(
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => ProfileEditScreen(authService: authService),
-                  ),
-                );
-              },
-              child: Stack(
-                children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: colors.accentCyan, width: 3),
-                      boxShadow: [
-                        BoxShadow(
-                          color: colors.accentCyan.withOpacity(0.5),
-                          blurRadius: 20,
-                          spreadRadius: 5,
-                        ),
-                      ],
-                    ),
-                    child: CircleAvatar(
-                      radius: 50,
-                      backgroundColor: colors.cosmicAccent,
-                      backgroundImage: _getAvatarImage(user?.avatarUrl),
-                      child: user?.avatarUrl == null || user!.avatarUrl!.isEmpty
-                          ? const Icon(
-                              Icons.person,
-                              size: 50,
-                              color: Colors.white,
-                            )
-                          : null,
-                    ),
-                  ),
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: LinearGradient(
-                          colors: [colors.accentPink, colors.accentCyan],
-                        ),
-                      ),
-                      child: const Icon(
-                        Icons.edit,
-                        size: 16,
-                        color: Colors.white,
-                      ),
-                    ),
+            Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: colors.accentCyan, width: 3),
+                boxShadow: [
+                  BoxShadow(
+                    color: colors.accentCyan.withOpacity(0.5),
+                    blurRadius: 20,
+                    spreadRadius: 5,
                   ),
                 ],
+              ),
+              child: const CircleAvatar(
+                radius: 50,
+                backgroundColor: Color(0xFF1a1a2e),
+                child: Icon(
+                  Icons.person,
+                  size: 50,
+                  color: Colors.white,
+                ),
               ),
             ),
 
             const SizedBox(height: 16),
 
             // User Name
-            Text(
-              user?.name ?? 'Music Lover',
-              style: const TextStyle(
+            const Text(
+              'Music Lover',
+              style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
                 color: Colors.white,
@@ -143,7 +102,7 @@ class UserProfileViewEnhanced extends StatelessWidget {
 
             // User Email
             Text(
-              user?.email ?? 'user@galaxy.com',
+              'Enjoy your music!',
               style: TextStyle(
                 fontSize: 14,
                 color: Colors.white.withOpacity(0.7),
@@ -213,19 +172,6 @@ class UserProfileViewEnhanced extends StatelessWidget {
                 children: [
                   _buildMenuItem(
                     context,
-                    icon: Icons.person,
-                    title: l10n.editProfile,
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              ProfileEditScreen(authService: authService),
-                        ),
-                      );
-                    },
-                  ),
-                  _buildMenuItem(
-                    context,
                     icon: Icons.notifications_outlined,
                     title: l10n.notifications,
                     subtitle: l10n.manageNotifications,
@@ -242,25 +188,6 @@ class UserProfileViewEnhanced extends StatelessWidget {
                     icon: Icons.help_outline,
                     title: l10n.helpAndSupport,
                     onTap: () {},
-                  ),
-                  const Divider(color: Colors.white24, height: 30),
-                  _buildMenuItem(
-                    context,
-                    icon: Icons.logout,
-                    title: l10n.logout,
-                    iconColor: Colors.red,
-                    onTap: () async {
-                      await authService.logout();
-                      if (context.mounted) {
-                        Navigator.of(context).pushAndRemoveUntil(
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                LoginScreen(authService: authService),
-                          ),
-                          (route) => false,
-                        );
-                      }
-                    },
                   ),
                 ],
               ),
@@ -318,24 +245,6 @@ class UserProfileViewEnhanced extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  /// Helper to get avatar image from path (handles both local files and URLs)
-  ImageProvider? _getAvatarImage(String? avatarUrl) {
-    if (avatarUrl == null || avatarUrl.isEmpty) return null;
-
-    // Check if it's a network URL
-    if (avatarUrl.startsWith('http://') || avatarUrl.startsWith('https://')) {
-      return NetworkImage(avatarUrl);
-    }
-
-    // It's a local file path
-    final file = File(avatarUrl);
-    if (file.existsSync()) {
-      return FileImage(file);
-    }
-
-    return null;
   }
 
   Widget _buildMenuItem(

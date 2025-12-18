@@ -212,6 +212,9 @@ class ListeningHistoryScreen extends StatelessWidget {
                           song.id,
                           song.musicSource,
                           localFilePath: song.localFilePath,
+                          title: song.title,
+                          artist: song.artist,
+                          artworkUrl: song.albumArt,
                         );
                       }
                     },
