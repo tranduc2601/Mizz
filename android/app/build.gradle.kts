@@ -50,3 +50,12 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // NewPipe Extractor for YouTube downloading - latest stable version
+    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.24.8")
+    
+    // Required dependencies for NewPipe
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("org.jsoup:jsoup:1.17.2")
+}

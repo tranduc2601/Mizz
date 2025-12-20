@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
+import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'music_model.dart';
 
@@ -39,9 +40,64 @@ class MusicService extends ChangeNotifier {
         _recentlyPlayed = recentList.map((j) => _musicItemFromJson(j)).toList();
       }
 
+      // Verify and clean up invalid local file paths
+      // This fixes issues with external storage paths that become inaccessible
+      await _verifyLocalFilePaths();
+
       notifyListeners();
     } catch (e) {
       debugPrint('❌ Error loading songs: $e');
+    }
+  }
+
+  /// Verify local file paths exist and are accessible
+  /// Clears paths that point to inaccessible external storage
+  Future<void> _verifyLocalFilePaths() async {
+    bool needsSave = false;
+
+    for (int i = 0; i < _musicItems.length; i++) {
+      final song = _musicItems[i];
+      if (song.localFilePath != null && song.localFilePath!.isNotEmpty) {
+        try {
+          final file = File(song.localFilePath!);
+          if (!await file.exists()) {
+            debugPrint(
+              '⚠️ Local file not found, clearing path: ${song.localFilePath}',
+            );
+            _musicItems[i] = song.copyWith(clearLocalFilePath: true);
+            needsSave = true;
+          }
+        } catch (e) {
+          // File access error - likely permission issue with external storage
+          debugPrint(
+            '⚠️ Cannot access file, clearing path: ${song.localFilePath}',
+          );
+          _musicItems[i] = song.copyWith(clearLocalFilePath: true);
+          needsSave = true;
+        }
+      }
+    }
+
+    // Also verify recently played
+    for (int i = 0; i < _recentlyPlayed.length; i++) {
+      final song = _recentlyPlayed[i];
+      if (song.localFilePath != null && song.localFilePath!.isNotEmpty) {
+        try {
+          final file = File(song.localFilePath!);
+          if (!await file.exists()) {
+            _recentlyPlayed[i] = song.copyWith(clearLocalFilePath: true);
+            needsSave = true;
+          }
+        } catch (e) {
+          _recentlyPlayed[i] = song.copyWith(clearLocalFilePath: true);
+          needsSave = true;
+        }
+      }
+    }
+
+    if (needsSave) {
+      debugPrint('💾 Saving cleaned up song paths');
+      await _saveToStorage();
     }
   }
 
@@ -119,14 +175,21 @@ class MusicService extends ChangeNotifier {
 
   /// Update the local file path for a song (after YouTube conversion)
   void updateLocalFilePath(String id, String localFilePath) {
+    debugPrint('🔍 Attempting to update local file path for song ID: $id');
     final index = _musicItems.indexWhere((song) => song.id == id);
     if (index != -1) {
+      final oldSong = _musicItems[index];
       _musicItems[index] = _musicItems[index].copyWith(
         localFilePath: localFilePath,
       );
       _saveToStorage();
       notifyListeners();
-      debugPrint('✅ Updated local file path for song $id: $localFilePath');
+      debugPrint('✅ Updated local file path for song "$id"');
+      debugPrint('   Old path: ${oldSong.localFilePath ?? "null"}');
+      debugPrint('   New path: $localFilePath');
+      debugPrint('   Song title: ${oldSong.title}');
+    } else {
+      debugPrint('❌ Song not found in library: $id');
     }
   }
 

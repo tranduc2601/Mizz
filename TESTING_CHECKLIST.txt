@@ -1,0 +1,280 @@
+╔════════════════════════════════════════════════════════════╗
+║         DOWNLOAD FIX - TESTING CHECKLIST                   ║
+╚════════════════════════════════════════════════════════════╝
+
+PREPARATION
+═══════════════════════════════════════════════════════════════
+□ Device connected via ADB
+  Command: adb devices
+  Expected: "device" in output
+
+□ App installed on device
+  Command: adb shell pm list packages | grep mizz
+  Expected: com.example.mizz
+
+□ Storage has space (>100 MB free)
+  Command: adb shell df -h /storage/emulated/0
+  Expected: >100M available
+
+□ Download directory accessible
+  Command: adb shell ls /storage/emulated/0/Android/data/com.example.mizz/files/
+  Expected: Directory listed (may be empty)
+
+
+SETUP MONITORING
+═══════════════════════════════════════════════════════════════
+□ Terminal 1: Test script running
+  Command: .\test_download.ps1 -VideoId "xqJVFc5MuGo"
+  Expected: Monitoring dashboard appears
+
+□ Terminal 2: App running
+  Command: flutter run (or use installed APK)
+  Expected: App launches successfully
+
+
+TEST 1: TINY FILE (30 seconds, ~0.5 MB)
+═══════════════════════════════════════════════════════════════
+Video: https://youtube.com/watch?v=xqJVFc5MuGo (or similar short)
+
+□ Download started
+  Expected in logs: "🎬 STARTING DOWNLOAD SESSION"
+
+□ Metadata fetched (< 5s)
+  Expected in logs: 
+  - "✅ Video ID extracted"
+  - "✅ Video metadata received"
+  - "✅ Stream manifest received"
+
+□ Stream selected
+  Expected in logs:
+  - "✅ Selected WebM/Opus stream"
+  - Size shown (e.g., "0.87 MB")
+
+□ Download begins
+  Expected in logs:
+  - "[STEP 8] STARTING DOWNLOAD OPERATION"
+  - "📝 Opening file for writing..."
+  - "✅ File stream opened successfully"
+  - "🌐 Initiating HTTP stream connection..."
+  - "✅ Stream connection established"
+  - "📥 Beginning data transfer..."
+
+□ Progress at 5%
+  Expected: "📊 5% | 0.XX/0.XX MB | XX.X KB/s | Chunks: XX"
+  Time: < 2s from start
+
+□ Progress at 10%
+  Expected: "📊 10% | ..."
+  Time: < 3s from start
+
+□ **CRITICAL: Progress at 15%**
+  Expected: "📊 15% | ..."
+  Expected: "🔍 CRITICAL RANGE (14-16%):" with details
+  Time: < 4s from start
+  
+  VERIFY:
+  □ "Time since last chunk: XX ms" < 1000ms
+  □ "File exists: true"
+  □ "File size on disk" matches downloaded bytes
+  
+  ⚠️ IF FREEZES HERE: CAPTURE LOGS IMMEDIATELY
+
+□ Progress at 20%
+  Expected: "📊 20% | ..."
+  Time: < 5s from start
+
+□ Progress continues (25%, 30%, ... 95%)
+  Expected: Updates every 2-3 seconds
+  File size grows continuously
+
+□ Progress at 100%
+  Expected: "📊 100% | ..."
+  Time: < 10s total
+
+□ Download completes
+  Expected in logs:
+  - "✅ STREAM FULLY CONSUMED"
+  - "Total chunks: XXX"
+  - "Total bytes: XXX"
+  - "💾 File flushed"
+  - "🔒 File stream closed and flushed"
+
+□ File verified
+  Expected in logs:
+  - "[STEP 9] Verifying downloaded file..."
+  - "✅ File exists"
+  - "File size on disk: XXX bytes"
+  - "✅ File size matches expected size"
+  - "✅ File is readable"
+
+□ Success message
+  Expected in logs:
+  - "============================================================"
+  - "✅ DOWNLOAD COMPLETED SUCCESSFULLY!"
+  - File path shown
+  - Size shown (MB)
+  - Time shown (seconds)
+  - Average speed shown (KB/s)
+
+□ File on device
+  Command: adb shell ls -lh /storage/.../Mizz\ songs/*.opus
+  Expected: File exists with correct size
+
+RESULT TEST 1: ______ (PASS/FAIL)
+Time taken: ______s
+File size: ______MB
+Notes: ________________________________________________
+
+
+TEST 2: SMALL FILE (2-3 minutes, 2-4 MB)
+═══════════════════════════════════════════════════════════════
+Video: (Use a 2-3 minute music video)
+
+□ Download started
+□ Metadata fetched (< 5s)
+□ Progress at 5%, 10%, 15%, 20%... (every 5%)
+□ **Passes 15% without freezing**
+□ Reaches 100%
+□ Download completes (< 30s)
+□ File verified
+
+RESULT TEST 2: ______ (PASS/FAIL)
+Time taken: ______s
+File size: ______MB
+Notes: ________________________________________________
+
+
+TEST 3: MEDIUM FILE (5-10 minutes, 5-10 MB)
+═══════════════════════════════════════════════════════════════
+Video: (Use a longer video)
+
+□ Download started
+□ Metadata fetched (< 5s)
+□ Progress updates appear regularly
+□ **Passes 15% without freezing**
+□ No stalls (> 10s without progress)
+□ Reaches 100%
+□ Download completes (< 90s)
+□ File verified
+
+RESULT TEST 3: ______ (PASS/FAIL)
+Time taken: ______s
+File size: ______MB
+Notes: ________________________________________________
+
+
+CONSISTENCY TEST
+═══════════════════════════════════════════════════════════════
+Repeat Test 1 three times:
+
+Attempt 1: ______ (PASS/FAIL) - Time: ______s
+Attempt 2: ______ (PASS/FAIL) - Time: ______s
+Attempt 3: ______ (PASS/FAIL) - Time: ______s
+
+SUCCESS RATE: ___/3 (Must be 3/3 to pass)
+
+
+FILE INTEGRITY TEST
+═══════════════════════════════════════════════════════════════
+□ File pulled from device
+  Command: adb pull "/storage/.../file.opus" .
+  Expected: File downloaded to PC
+
+□ File is valid audio
+  Command: ffprobe -v error file.opus
+  Expected: No errors, shows audio info
+
+□ File is playable
+  Command: ffplay file.opus (or open in VLC)
+  Expected: Plays correctly
+
+RESULT: ______ (PASS/FAIL)
+
+
+PERFORMANCE BENCHMARKS
+═══════════════════════════════════════════════════════════════
+For 0.87 MB file:
+
+□ Total time < 10s            Actual: ______s
+□ Average speed > 50 KB/s     Actual: ______KB/s
+□ Peak speed > 100 KB/s       Actual: ______KB/s
+□ Chunk count 200-500         Actual: ______chunks
+□ No stalls > 5s              Stalls: ______
+
+RESULT: ______ (PASS/FAIL)
+
+
+ERROR HANDLING TEST
+═══════════════════════════════════════════════════════════════
+□ Test with invalid URL
+  Expected: Clear error message, no crash
+
+□ Test with no internet
+  Expected: "No internet connection" error
+
+□ Test with region-locked video
+  Expected: "Video unavailable" error
+
+RESULT: ______ (PASS/FAIL)
+
+
+EDGE CASE TESTS
+═══════════════════════════════════════════════════════════════
+□ Download same file twice
+  Expected: Overwrites cleanly
+
+□ Cancel mid-download
+  Expected: Stops gracefully, cleans up
+
+□ Multiple downloads in sequence
+  Expected: All succeed
+
+RESULT: ______ (PASS/FAIL)
+
+
+FINAL VERIFICATION
+═══════════════════════════════════════════════════════════════
+□ All test files downloaded successfully
+□ No freeze at 15% in any test
+□ No error messages in logs
+□ All files verified and playable
+□ Performance meets expectations
+□ Consistency is 100% (3/3 attempts)
+
+═══════════════════════════════════════════════════════════════
+                       OVERALL RESULT
+═══════════════════════════════════════════════════════════════
+
+TESTS PASSED: _____ / 7
+
+✅ PASS = All core tests passed, 15% freeze eliminated
+⚠️ PARTIAL = Some tests pass, issues remain
+❌ FAIL = Downloads still freeze or fail consistently
+
+
+ISSUES ENCOUNTERED (if any):
+════════════════════════════════════════════════════════════
+1. ________________________________________________________
+
+2. ________________________________________________________
+
+3. ________________________________________________________
+
+
+NEXT STEPS:
+════════════════════════════════════════════════════════════
+□ If PASS: Mark issue as resolved, deploy to production
+□ If PARTIAL: Review logs, identify remaining issues
+□ If FAIL: Capture full logs, try alternative approach
+
+
+LOG FILES COLLECTED:
+════════════════════════════════════════════════════════════
+□ download_test_YYYYMMDD_HHMMSS.log
+□ adb logcat output
+□ test_download.ps1 output screenshots
+
+
+TESTER: _____________________ DATE: _____________________
+
+SIGNATURE: __________________ TIME: _____________________

@@ -4,9 +4,9 @@ import 'core/theme.dart';
 import 'core/theme_provider.dart';
 import 'core/feature_registry.dart';
 import 'core/localization/app_localization.dart';
-import 'core/background_audio_handler.dart';
 import 'core/media_notification_handler.dart';
 import 'core/download_manager.dart';
+import 'core/newpipe_downloader.dart';
 import 'features/music_carousel/music_carousel_feature.dart';
 import 'features/music_carousel/music_service.dart';
 import 'features/music_carousel/music_player_service.dart';
@@ -18,14 +18,14 @@ Future<void> main() async {
   // Initialize the app
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Background Audio Service (legacy)
+  // Initialize NewPipe Downloader
   try {
-    await initAudioService();
+    NewPipeDownloader.initialize();
+    debugPrint('✅ NewPipe Downloader initialized');
   } catch (e) {
-    debugPrint('⚠️ Failed to initialize background audio service: $e');
+    debugPrint('⚠️ NewPipe initialization failed: $e');
   }
 
-  // Initialize Media Notification Service (Android 13+ style)
   try {
     await initMizzAudioService();
   } catch (e) {

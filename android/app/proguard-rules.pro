@@ -108,3 +108,20 @@
 
 # Package info plus
 -keep class dev.fluttercommunity.plus.packageinfo.** { *; }
+
+# NewPipe Extractor - Ignore missing desktop Java classes
+# These classes (java.beans, javax.script) don't exist on Android
+-dontwarn java.beans.**
+-dontwarn javax.script.**
+-dontwarn org.mozilla.javascript.**
+-dontwarn org.mozilla.classfile.**
+
+# Keep rules to prevent R8 from failing on missing references
+-keep,allowobfuscation,allowshrinking class java.beans.** { *; }
+-keep,allowobfuscation,allowshrinking class javax.script.** { *; }
+-keep class org.mozilla.javascript.** { *; }
+-keep class org.mozilla.classfile.** { *; }
+
+# Keep NewPipe classes
+-keep class org.schabi.newpipe.extractor.** { *; }
+-keepclassmembers class org.schabi.newpipe.extractor.** { *; }

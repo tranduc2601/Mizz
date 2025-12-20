@@ -89,15 +89,28 @@ class _Carousel3DState extends State<Carousel3D>
       try {
         ImageProvider imageProvider;
         if (item.albumArt.startsWith('http')) {
-          imageProvider = NetworkImage(item.albumArt);
+          // Use ResizeImage for network images to reduce memory
+          imageProvider = ResizeImage(
+            NetworkImage(item.albumArt),
+            width: 100,
+            height: 100,
+            policy: ResizeImagePolicy.fit,
+          );
         } else {
-          imageProvider = FileImage(File(item.albumArt));
+          // Use ResizeImage for file images
+          imageProvider = ResizeImage(
+            FileImage(File(item.albumArt)),
+            width: 100,
+            height: 100,
+            policy: ResizeImagePolicy.fit,
+          );
         }
 
+        // Extract color palette - this is CPU intensive but necessary
         final paletteGenerator = await PaletteGenerator.fromImageProvider(
           imageProvider,
-          size: const Size(100, 100),
-          maximumColorCount: 5,
+          size: const Size(50, 50), // Smaller size for faster extraction
+          maximumColorCount: 3, // Reduced from 5 to speed up
         );
 
         if (mounted) {
@@ -514,11 +527,18 @@ class MusicCard3D extends StatelessWidget {
       return _buildPlaceholder();
     }
 
+    // Use ResizeImage to prevent loading full-size images
+    // This dramatically reduces memory usage and improves performance
     if (item.albumArt.startsWith('http')) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(14),
-        child: Image.network(
-          item.albumArt,
+        child: Image(
+          image: ResizeImage(
+            NetworkImage(item.albumArt),
+            width: 600, // Resize to max 600px wide
+            height: 600,
+            policy: ResizeImagePolicy.fit,
+          ),
           width: cardWidth,
           height: cardHeight,
           fit: BoxFit.cover,
@@ -529,8 +549,13 @@ class MusicCard3D extends StatelessWidget {
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(14),
-      child: Image.file(
-        File(item.albumArt),
+      child: Image(
+        image: ResizeImage(
+          FileImage(File(item.albumArt)),
+          width: 600,
+          height: 600,
+          policy: ResizeImagePolicy.fit,
+        ),
         width: cardWidth,
         height: cardHeight,
         fit: BoxFit.cover,

@@ -140,15 +140,26 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
     try {
       ImageProvider imageProvider;
       if (item.albumArt.startsWith('http')) {
-        imageProvider = NetworkImage(item.albumArt);
+        // Use ResizeImage to prevent loading full-size images
+        imageProvider = ResizeImage(
+          NetworkImage(item.albumArt),
+          width: 100,
+          height: 100,
+          policy: ResizeImagePolicy.fit,
+        );
       } else {
-        imageProvider = FileImage(File(item.albumArt));
+        imageProvider = ResizeImage(
+          FileImage(File(item.albumArt)),
+          width: 100,
+          height: 100,
+          policy: ResizeImagePolicy.fit,
+        );
       }
 
       final paletteGenerator = await PaletteGenerator.fromImageProvider(
         imageProvider,
-        size: const Size(100, 100),
-        maximumColorCount: 5,
+        size: const Size(50, 50), // Smaller for faster processing
+        maximumColorCount: 3, // Reduced color count
       );
 
       if (mounted) {
@@ -1103,7 +1114,6 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
       builder: (context, _) {
         final downloading = downloadManager.isDownloading(item.id);
         final task = downloadManager.getTask(item.id);
-        final progress = task?.progress ?? 0.0;
 
         return ListTile(
           leading: downloading
@@ -1111,16 +1121,14 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
                   width: 24,
                   height: 24,
                   child: CircularProgressIndicator(
-                    value: progress > 0.1 ? progress : null,
+                    value: null, // Indeterminate to prevent lag
                     strokeWidth: 2,
                     color: GalaxyTheme.auroraGreen,
                   ),
                 )
               : Icon(Icons.download, color: GalaxyTheme.auroraGreen),
           title: Text(
-            downloading
-                ? 'Đang tải... ${(progress * 100).toInt()}%'
-                : 'Tải về (MP3)',
+            downloading ? 'Đang tải xuống...' : 'Tải về (MP3)',
             style: TextStyle(color: GalaxyTheme.auroraGreen),
           ),
           subtitle: Text(
@@ -1148,10 +1156,12 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
                       musicService.updateLocalFilePath(item.id, localPath);
 
                       if (context.mounted) {
+                        ScaffoldMessenger.of(context).clearSnackBars();
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text('✅ Đã tải về: ${item.title}'),
                             backgroundColor: GalaxyTheme.auroraGreen,
+                            duration: const Duration(seconds: 3),
                           ),
                         );
                       }
@@ -1159,6 +1169,7 @@ class _MusicCarouselViewState extends State<MusicCarouselView> {
                   );
 
                   // Show feedback
+                  ScaffoldMessenger.of(context).clearSnackBars();
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text('⬇️ Bắt đầu tải: ${item.title}'),

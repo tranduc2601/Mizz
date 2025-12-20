@@ -31,6 +31,8 @@ class MusicItem {
   /// Check if local cache exists
   bool get hasLocalCache => localFilePath != null && localFilePath!.isNotEmpty;
 
+  /// Creates a copy with updated fields
+  /// Use [clearLocalFilePath] = true to explicitly set localFilePath to null
   MusicItem copyWith({
     String? id,
     String? title,
@@ -38,6 +40,7 @@ class MusicItem {
     String? albumArt,
     String? musicSource,
     String? localFilePath,
+    bool clearLocalFilePath = false,
     String? duration,
     bool? isFavorite,
   }) {
@@ -47,7 +50,9 @@ class MusicItem {
       artist: artist ?? this.artist,
       albumArt: albumArt ?? this.albumArt,
       musicSource: musicSource ?? this.musicSource,
-      localFilePath: localFilePath ?? this.localFilePath,
+      localFilePath: clearLocalFilePath
+          ? null
+          : (localFilePath ?? this.localFilePath),
       duration: duration ?? this.duration,
       isFavorite: isFavorite ?? this.isFavorite,
     );

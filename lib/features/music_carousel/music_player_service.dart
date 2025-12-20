@@ -1,16 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:audio_session/audio_session.dart';
-import 'package:youtube_explode_dart/youtube_explode_dart.dart';
+import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
-import 'package:path_provider/path_provider.dart';
 import '../../core/media_notification_handler.dart';
 
-/// Loop mode enum
 enum MusicLoopMode { none, one, all }
 
-/// Current song metadata for notification
 class CurrentSongMetadata {
   final String id;
   final String title;
@@ -25,15 +21,9 @@ class CurrentSongMetadata {
   });
 }
 
-/// Music Player Service - Handles audio playback
-/// Uses just_audio for all audio playback (local, URL, and YouTube)
-/// Integrates with MizzAudioHandler for Android 13+ media notifications
 class MusicPlayerService extends ChangeNotifier {
-  // Fallback player when audio handler is not initialized
   AudioPlayer? _fallbackPlayer;
 
-  // Use the audio handler's player for unified playback + notification
-  // Falls back to own player if handler not initialized
   AudioPlayer get _audioPlayer {
     if (isMizzAudioHandlerInitialized) {
       return mizzAudioHandler.player;
@@ -42,7 +32,6 @@ class MusicPlayerService extends ChangeNotifier {
     return _fallbackPlayer!;
   }
 
-  final YoutubeExplode _youtubeExplode = YoutubeExplode();
   String? _currentSongId;
   bool _isPlaying = false;
   bool _isLoading = false;
@@ -51,51 +40,57 @@ class MusicPlayerService extends ChangeNotifier {
   Duration _duration = Duration.zero;
   double _volume = 1.0;
   double _playbackSpeed = 1.0;
-  bool _autoNext = true; // Auto-play next song when current ends
+  bool _autoNext = true;
   bool _audioSessionInitialized = false;
   bool _streamListenersInitialized = false;
-
-  // Current song metadata for notification
+  bool _isDisposed = false;
+  final List<StreamSubscription> _subscriptions = [];
   CurrentSongMetadata? _currentMetadata;
 
   MusicPlayerService() {
     _initAudioSession();
-    // Defer stream listener setup to ensure mizzAudioHandler is ready
     Future.microtask(() => _initStreamListeners());
   }
 
-  /// Initialize stream listeners from the audio handler's player
+  void _safeNotifyListeners() {
+    if (!_isDisposed) {
+      notifyListeners();
+    }
+  }
+
   void _initStreamListeners() {
-    if (_streamListenersInitialized) return;
+    if (_streamListenersInitialized || _isDisposed) return;
     _streamListenersInitialized = true;
 
     final player = _audioPlayer;
 
-    // Position stream
-    player.positionStream.listen((position) {
-      _position = position;
-      notifyListeners();
-    });
+    _subscriptions.add(
+      player.positionStream.listen((position) {
+        if (_isDisposed) return;
+      }),
+    );
 
-    // Duration stream
-    player.durationStream.listen((duration) {
-      _duration = duration ?? Duration.zero;
-      notifyListeners();
-    });
+    _subscriptions.add(
+      player.durationStream.listen((duration) {
+        if (_isDisposed) return;
+        _duration = duration ?? Duration.zero;
+        _safeNotifyListeners();
+      }),
+    );
 
-    // Player state stream
-    player.playerStateStream.listen((state) {
-      _isPlaying = state.playing;
-      notifyListeners();
+    _subscriptions.add(
+      player.playerStateStream.listen((state) {
+        if (_isDisposed) return;
+        _isPlaying = state.playing;
+        _safeNotifyListeners();
 
-      // Handle song completion
-      if (state.processingState == ProcessingState.completed) {
-        _handleSongComplete();
-      }
-    });
+        if (state.processingState == ProcessingState.completed) {
+          _handleSongComplete();
+        }
+      }),
+    );
   }
 
-  /// Initialize audio session for background playback
   Future<void> _initAudioSession() async {
     if (_audioSessionInitialized) return;
     _audioSessionInitialized = true;
@@ -103,7 +98,6 @@ class MusicPlayerService extends ChangeNotifier {
     try {
       final session = await AudioSession.instance;
 
-      // Configure for music playback with background support
       await session.configure(
         const AudioSessionConfiguration(
           avAudioSessionCategory: AVAudioSessionCategory.playback,
@@ -268,7 +262,6 @@ class MusicPlayerService extends ChangeNotifier {
       _isLoading = true;
       notifyListeners();
 
-      // Store metadata for notification
       _currentMetadata = CurrentSongMetadata(
         id: songId,
         title: title ?? 'Unknown Title',
@@ -276,33 +269,22 @@ class MusicPlayerService extends ChangeNotifier {
         artworkUrl: artworkUrl,
       );
 
-      // Stop any playing audio first
       await _audioPlayer.stop();
 
-      // If local file path is available, use it (fastest)
       if (localFilePath != null && localFilePath.isNotEmpty) {
         final localFile = File(localFilePath);
         if (await localFile.exists()) {
-          debugPrint('✅ Playing from local cache (instant): $localFilePath');
+          debugPrint('✅ Playing from local cache: $localFilePath');
           await _playSource(localFilePath, isFile: true);
           _isLoading = false;
           notifyListeners();
           return;
-        } else {
-          debugPrint('⚠️ Local file not found, falling back to source');
         }
       }
 
-      // Check if it's a YouTube URL
-      if (musicSource.contains('youtube.com') ||
-          musicSource.contains('youtu.be')) {
-        await _playYouTube(musicSource);
-      } else if (musicSource.startsWith('http')) {
-        // Direct URL
+      if (musicSource.startsWith('http')) {
         await _playSource(musicSource, isFile: false);
       } else {
-        // Local file
-        debugPrint('📁 Playing local file: $musicSource');
         await _playSource(musicSource, isFile: true);
       }
 
@@ -316,10 +298,8 @@ class MusicPlayerService extends ChangeNotifier {
     }
   }
 
-  /// Play from source with optional notification update
   Future<void> _playSource(String source, {required bool isFile}) async {
     if (isMizzAudioHandlerInitialized && _currentMetadata != null) {
-      // Use audio handler for playback with notification
       await mizzAudioHandler.playFromSource(
         id: _currentMetadata!.id,
         source: source,
@@ -330,7 +310,6 @@ class MusicPlayerService extends ChangeNotifier {
       await mizzAudioHandler.setVolume(_volume);
       await mizzAudioHandler.setSpeed(_playbackSpeed);
     } else {
-      // Fallback: use player directly without notification
       if (isFile) {
         await _audioPlayer.setFilePath(source);
       } else {
@@ -339,271 +318,6 @@ class MusicPlayerService extends ChangeNotifier {
       await _audioPlayer.setVolume(_volume);
       await _audioPlayer.setSpeed(_playbackSpeed);
       await _audioPlayer.play();
-    }
-  }
-
-  Future<void> _playYouTube(String url) async {
-    debugPrint('🎵 Loading YouTube video: $url');
-
-    final video = await _youtubeExplode.videos.get(url);
-    debugPrint('📹 Video: ${video.title}');
-
-    final manifest = await _youtubeExplode.videos.streamsClient.getManifest(
-      video.id,
-    );
-
-    // Try different stream types in order of preference
-    File? downloadedFile;
-
-    // Strategy 1: Try muxed MP4 streams (most compatible)
-    final muxedMp4 = manifest.muxed
-        .where((s) => s.container.name.toLowerCase() == 'mp4')
-        .toList();
-
-    if (muxedMp4.isNotEmpty) {
-      muxedMp4.sort((a, b) => a.size.totalBytes.compareTo(b.size.totalBytes));
-      final stream = muxedMp4.first;
-      debugPrint(
-        '📦 Trying muxed MP4: ${(stream.size.totalBytes / 1024 / 1024).toStringAsFixed(1)} MB',
-      );
-      downloadedFile = await _downloadStream(video.id.value, stream, 'mp4');
-    }
-
-    // Strategy 2: Try audio-only MP4/M4A
-    if (downloadedFile == null) {
-      final audioMp4 = manifest.audioOnly
-          .where(
-            (s) =>
-                s.container.name.toLowerCase() == 'mp4' ||
-                s.container.name.toLowerCase() == 'm4a',
-          )
-          .toList();
-
-      if (audioMp4.isNotEmpty) {
-        audioMp4.sort((a, b) => b.bitrate.compareTo(a.bitrate));
-        final stream = audioMp4.first;
-        debugPrint(
-          '📦 Trying audio MP4/M4A: ${stream.bitrate.kiloBitsPerSecond} kbps',
-        );
-        downloadedFile = await _downloadStream(video.id.value, stream, 'm4a');
-      }
-    }
-
-    // Strategy 3: Try WebM/Opus
-    if (downloadedFile == null) {
-      final webm = manifest.audioOnly
-          .where((s) => s.container.name.toLowerCase() == 'webm')
-          .toList();
-
-      if (webm.isNotEmpty) {
-        webm.sort((a, b) => b.bitrate.compareTo(a.bitrate));
-        final stream = webm.first;
-        debugPrint(
-          '📦 Trying WebM audio: ${stream.bitrate.kiloBitsPerSecond} kbps',
-        );
-        downloadedFile = await _downloadStream(video.id.value, stream, 'webm');
-      }
-    }
-
-    if (downloadedFile == null) {
-      throw Exception('No suitable audio stream found');
-    }
-
-    // Use video thumbnail as artwork if no custom artwork was provided
-    final thumbnailUrl =
-        _currentMetadata?.artworkUrl ??
-        'https://i.ytimg.com/vi/${video.id.value}/hqdefault.jpg';
-
-    // Update metadata with YouTube info if needed
-    _currentMetadata ??= CurrentSongMetadata(
-      id: video.id.value,
-      title: video.title,
-      artist: video.author,
-      artworkUrl: thumbnailUrl,
-    );
-
-    // Play using shared method
-    debugPrint('▶️ Playing YouTube with media notification...');
-    await _playSource(downloadedFile.path, isFile: true);
-    debugPrint('✅ YouTube playing with notification');
-  }
-
-  Future<File?> _downloadStream(
-    String videoId,
-    StreamInfo stream,
-    String ext,
-  ) async {
-    try {
-      final tempDir = await getTemporaryDirectory();
-      final tempFile = File('${tempDir.path}/yt_$videoId.$ext');
-
-      if (await tempFile.exists()) {
-        await tempFile.delete();
-      }
-
-      debugPrint('📥 Downloading ${stream.size.totalBytes} bytes...');
-
-      final dataStream = _youtubeExplode.videos.streamsClient.get(stream);
-      final List<int> allBytes = [];
-      final totalBytes = stream.size.totalBytes;
-
-      int lastProgress = 0;
-      await for (final chunk in dataStream) {
-        allBytes.addAll(chunk);
-        final progress = (allBytes.length / totalBytes * 100).toInt();
-        if (progress >= lastProgress + 20) {
-          debugPrint('📥 Progress: $progress%');
-          lastProgress = progress;
-        }
-      }
-
-      debugPrint('📥 Downloaded ${allBytes.length} bytes');
-
-      if (allBytes.length < 10000) {
-        debugPrint('⚠️ Download too small, skipping');
-        return null;
-      }
-
-      await tempFile.writeAsBytes(Uint8List.fromList(allBytes), flush: true);
-
-      final savedSize = await tempFile.length();
-      debugPrint('💾 Saved: $savedSize bytes at ${tempFile.path}');
-
-      if (savedSize < allBytes.length * 0.9) {
-        debugPrint('⚠️ File save incomplete');
-        return null;
-      }
-
-      return tempFile;
-    } catch (e) {
-      debugPrint('❌ Download failed: $e');
-      return null;
-    }
-  }
-
-  /// Download YouTube audio to permanent storage
-  /// Returns the permanent file path if successful, null otherwise
-  Future<String?> downloadYouTubeAudio(
-    String musicSource, {
-    String? songTitle,
-    Function(double)? onProgress,
-  }) async {
-    if (!musicSource.contains('youtube.com') &&
-        !musicSource.contains('youtu.be')) {
-      debugPrint('⚠️ Not a YouTube URL');
-      return null;
-    }
-
-    try {
-      debugPrint('📥 Starting permanent download: $musicSource');
-
-      final video = await _youtubeExplode.videos.get(musicSource);
-      debugPrint('📹 Video: ${video.title}');
-
-      final manifest = await _youtubeExplode.videos.streamsClient.getManifest(
-        video.id,
-      );
-
-      // Get the best audio stream
-      StreamInfo? bestStream;
-      String ext = 'm4a';
-
-      // Try audio-only MP4/M4A first (best for mobile)
-      final audioMp4 = manifest.audioOnly
-          .where(
-            (s) =>
-                s.container.name.toLowerCase() == 'mp4' ||
-                s.container.name.toLowerCase() == 'm4a',
-          )
-          .toList();
-
-      if (audioMp4.isNotEmpty) {
-        audioMp4.sort((a, b) => b.bitrate.compareTo(a.bitrate));
-        bestStream = audioMp4.first;
-        ext = 'm4a';
-      } else {
-        // Fallback to muxed MP4
-        final muxedMp4 = manifest.muxed
-            .where((s) => s.container.name.toLowerCase() == 'mp4')
-            .toList();
-        if (muxedMp4.isNotEmpty) {
-          muxedMp4.sort(
-            (a, b) => a.size.totalBytes.compareTo(b.size.totalBytes),
-          );
-          bestStream = muxedMp4.first;
-          ext = 'mp4';
-        }
-      }
-
-      if (bestStream == null) {
-        debugPrint('❌ No suitable audio stream found');
-        return null;
-      }
-
-      // Get permanent storage directory
-      final appDir = await getApplicationDocumentsDirectory();
-      final musicDir = Directory('${appDir.path}/MizzMusic');
-      if (!await musicDir.exists()) {
-        await musicDir.create(recursive: true);
-      }
-
-      // Create safe filename
-      final safeTitle = (songTitle ?? video.title)
-          .replaceAll(RegExp(r'[<>:"/\\|?*]'), '_')
-          .replaceAll(RegExp(r'\s+'), '_');
-      final fileName = '${video.id.value}_$safeTitle.$ext';
-      final permanentFile = File('${musicDir.path}/$fileName');
-
-      // Check if already downloaded
-      if (await permanentFile.exists()) {
-        debugPrint('✅ File already exists: ${permanentFile.path}');
-        return permanentFile.path;
-      }
-
-      debugPrint('📥 Downloading to: ${permanentFile.path}');
-
-      final dataStream = _youtubeExplode.videos.streamsClient.get(bestStream);
-      final List<int> allBytes = [];
-      final totalBytes = bestStream.size.totalBytes;
-
-      int lastProgressPercent = 0;
-      await for (final chunk in dataStream) {
-        allBytes.addAll(chunk);
-        final progress = allBytes.length / totalBytes;
-        final progressPercent = (progress * 100).toInt();
-
-        // Update progress callback more frequently (every 2%)
-        if (progressPercent >= lastProgressPercent + 2 ||
-            progressPercent == 100) {
-          debugPrint('📥 Download progress: $progressPercent%');
-          lastProgressPercent = progressPercent;
-          onProgress?.call(progress);
-        }
-      }
-
-      // Ensure final progress is reported
-      onProgress?.call(1.0);
-
-      if (allBytes.length < 10000) {
-        debugPrint('⚠️ Download too small');
-        return null;
-      }
-
-      await permanentFile.writeAsBytes(
-        Uint8List.fromList(allBytes),
-        flush: true,
-      );
-
-      final savedSize = await permanentFile.length();
-      debugPrint(
-        '✅ Downloaded: ${(savedSize / 1024 / 1024).toStringAsFixed(2)} MB',
-      );
-      debugPrint('✅ Saved to: ${permanentFile.path}');
-
-      return permanentFile.path;
-    } catch (e) {
-      debugPrint('❌ Download error: $e');
-      return null;
     }
   }
 
@@ -642,8 +356,6 @@ class MusicPlayerService extends ChangeNotifier {
     }
   }
 
-  /// Set up callbacks for notification transport controls
-  /// Call this after initializing the service to handle skip next/previous from notification
   void setupNotificationCallbacks({
     VoidCallback? onSkipToNext,
     VoidCallback? onSkipToPrevious,
@@ -654,17 +366,20 @@ class MusicPlayerService extends ChangeNotifier {
     }
   }
 
-  /// Get current metadata
   CurrentSongMetadata? get currentMetadata => _currentMetadata;
 
   @override
   void dispose() {
-    _youtubeExplode.close();
+    _isDisposed = true;
+    for (final subscription in _subscriptions) {
+      subscription.cancel();
+    }
+    _subscriptions.clear();
+    _fallbackPlayer?.dispose();
     super.dispose();
   }
 }
 
-/// Music Player Service Provider - Provides player service to widget tree
 class MusicPlayerServiceProvider extends InheritedWidget {
   final MusicPlayerService playerService;
 

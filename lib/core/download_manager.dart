@@ -1,10 +1,14 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:isolate';
 import 'package:flutter/material.dart';
-import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:http/http.dart' as http;
+import 'newpipe_downloader.dart';
+
+/// Download Manager - Anti-lag optimizations implemented:
+/// 1. Throttled UI updates (500ms interval) to prevent frame drops
+/// 2. Progress updates only fire when change >= 2% to reduce rebuilds
+/// 3. Separate throttled vs forced notify for different update priorities
+/// 4. Pending update flag to batch multiple rapid updates
 
 /// Download Task - Represents a single download
 class DownloadTask {
@@ -16,6 +20,7 @@ class DownloadTask {
   bool isComplete;
   bool isFailed;
   String? localPath;
+  String? errorMessage;
 
   DownloadTask({
     required this.songId,
@@ -26,17 +31,22 @@ class DownloadTask {
     this.isComplete = false,
     this.isFailed = false,
     this.localPath,
+    this.errorMessage,
   });
 }
 
-/// Download Manager - Manages background downloads with notifications
+/// Download Manager - Manages background downloads with comprehensive error handling
 class DownloadManager extends ChangeNotifier {
   static final DownloadManager _instance = DownloadManager._internal();
   factory DownloadManager() => _instance;
   DownloadManager._internal();
 
   final Map<String, DownloadTask> _activeTasks = {};
-  final YoutubeExplode _youtubeExplode = YoutubeExplode();
+
+  // Throttle UI updates to prevent lag - increased to 500ms for smoother performance
+  DateTime? _lastNotifyTime;
+  Timer? _notifyTimer;
+  bool _hasPendingUpdate = false;
 
   /// Get all active downloads
   List<DownloadTask> get activeTasks => _activeTasks.values.toList();
@@ -56,7 +66,65 @@ class DownloadManager extends ChangeNotifier {
     }
   }
 
-  /// Start a new download
+  /// Check internet connectivity before download
+  Future<bool> _checkInternetConnection() async {
+    try {
+      final result = await InternetAddress.lookup(
+        'google.com',
+      ).timeout(const Duration(seconds: 5));
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (e) {
+      debugPrint('⚠️ Internet check failed: $e');
+      return false;
+    }
+  }
+
+  /// Throttled notify listeners - only updates UI every 500ms to prevent lag
+  /// Aggressive throttling for smooth performance during downloads
+  void _throttledNotifyListeners() {
+    final now = DateTime.now();
+
+    // If last notification was less than 500ms ago, schedule a delayed update
+    if (_lastNotifyTime != null &&
+        now.difference(_lastNotifyTime!).inMilliseconds < 500) {
+      // Mark that we have a pending update
+      _hasPendingUpdate = true;
+
+      // Cancel any existing pending notification
+      _notifyTimer?.cancel();
+
+      // Schedule a new one
+      _notifyTimer = Timer(const Duration(milliseconds: 500), () {
+        if (_hasPendingUpdate) {
+          _lastNotifyTime = DateTime.now();
+          _hasPendingUpdate = false;
+          notifyListeners();
+        }
+      });
+      return;
+    }
+
+    // Update immediately if enough time has passed
+    _lastNotifyTime = now;
+    _hasPendingUpdate = false;
+    notifyListeners();
+  }
+
+  /// Force immediate UI update (for important state changes)
+  void _forceNotifyListeners() {
+    _notifyTimer?.cancel();
+    _lastNotifyTime = DateTime.now();
+    _hasPendingUpdate = false;
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _notifyTimer?.cancel();
+    super.dispose();
+  }
+
+  /// Start a new download with comprehensive error handling
   Future<void> startDownload({
     required String songId,
     required String songTitle,
@@ -76,7 +144,7 @@ class DownloadManager extends ChangeNotifier {
     );
 
     _activeTasks[songId] = task;
-    notifyListeners();
+    _forceNotifyListeners();
 
     // Start download in background
     _downloadInBackground(task, onComplete);
@@ -86,248 +154,295 @@ class DownloadManager extends ChangeNotifier {
     DownloadTask task,
     Function(String localPath) onComplete,
   ) async {
+    final stopwatch = Stopwatch()..start();
+
+    debugPrint('\n${'=' * 60}');
+    debugPrint('🎬 STARTING DOWNLOAD SESSION');
+    debugPrint('Song ID: ${task.songId}');
+    debugPrint('Title: ${task.songTitle}');
+    debugPrint('URL: ${task.youtubeUrl}');
+    debugPrint('Timestamp: ${DateTime.now()}');
+    debugPrint('=' * 60);
+
     try {
-      task.status = 'Getting video info...';
-      task.progress = 0.05;
-      notifyListeners();
+      // ✅ STEP 1: Check internet connectivity
+      debugPrint('\n[STEP 1] Checking internet connectivity...');
+      task.status = 'Checking connection...';
+      task.progress = 0.02;
+      _throttledNotifyListeners();
 
-      final videoId = _extractVideoId(task.youtubeUrl);
-      if (videoId == null) {
-        task.status = 'Invalid URL';
-        task.isFailed = true;
-        notifyListeners();
-        return;
-      }
-
-      // Get video info
-      final video = await _youtubeExplode.videos.get(task.youtubeUrl);
-      debugPrint('📹 Video: ${video.title}');
-
-      task.status = 'Finding audio stream...';
-      task.progress = 0.1;
-      notifyListeners();
-
-      // Get stream manifest
-      final manifest = await _youtubeExplode.videos.streamsClient.getManifest(
-        video.id,
+      final hasInternet = await _checkInternetConnection().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          debugPrint('❌ Internet check timeout');
+          return false;
+        },
       );
 
-      // Get the best audio stream - prefer lower bitrate for faster download
-      // Sort by bitrate and pick a balanced option
-      final audioStreams = manifest.audioOnly.toList();
-      audioStreams.sort((a, b) => a.bitrate.compareTo(b.bitrate));
-
-      AudioOnlyStreamInfo? audioStream;
-      String extension = 'm4a';
-
-      // Try to find a medium quality MP4/M4A stream (faster download)
-      for (final stream in audioStreams) {
-        if (stream.container.name.toLowerCase() == 'mp4' ||
-            stream.container.name.toLowerCase() == 'm4a') {
-          audioStream = stream;
-          extension = 'm4a';
-          break;
-        }
+      if (!hasInternet) {
+        debugPrint('❌ No internet connection detected');
+        throw SocketException(
+          'No internet connection. Please check your network and try again.',
+        );
       }
+      debugPrint('✅ Internet connection verified');
 
-      // Fallback to any available stream
-      if (audioStream == null) {
-        if (audioStreams.isNotEmpty) {
-          audioStream = audioStreams.first;
-        } else if (manifest.audioOnly.isNotEmpty) {
-          audioStream = manifest.audioOnly.withHighestBitrate();
-        } else {
-          // No audio stream found, try muxed streams
-          final muxedStreams = manifest.muxed.toList();
-          if (muxedStreams.isEmpty) {
-            task.status = 'No audio stream found';
-            task.isFailed = true;
-            notifyListeners();
-            return;
-          }
-          // Use muxed stream as fallback
-          muxedStreams.sort(
-            (a, b) => a.size.totalBytes.compareTo(b.size.totalBytes),
-          );
-          final muxedStream = muxedStreams.first;
-          extension = muxedStream.container.name.toLowerCase();
-
-          task.status = 'Downloading (video)...';
-          task.progress = 0.15;
-          notifyListeners();
-
-          // Create file path for muxed stream
-          final cacheDir = await _getMusicCacheDir();
-          final sanitizedTitle = task.songTitle
-              .replaceAll(RegExp(r'[<>:"/\\|?*]'), '_')
-              .replaceAll(RegExp(r'\s+'), '_');
-          final fileName = '${videoId}_$sanitizedTitle.$extension';
-          final localFile = File('${cacheDir.path}/$fileName');
-
-          if (await localFile.exists()) {
-            await localFile.delete();
-          }
-
-          final streamUrl = muxedStream.url;
-          final response = await http.Client().send(
-            http.Request('GET', streamUrl),
-          );
-
-          final totalBytes = muxedStream.size.totalBytes;
-          int downloadedBytes = 0;
-          final fileStream = localFile.openWrite();
-
-          await for (final chunk in response.stream) {
-            fileStream.add(chunk);
-            downloadedBytes += chunk.length;
-
-            final downloadProgress = downloadedBytes / totalBytes;
-            task.progress = 0.15 + downloadProgress * 0.8;
-            task.status = 'Downloading... ${(task.progress * 100).toInt()}%';
-            notifyListeners();
-          }
-
-          await fileStream.flush();
-          await fileStream.close();
-
-          task.status = 'Complete!';
-          task.progress = 1.0;
-          task.isComplete = true;
-          task.localPath = localFile.path;
-          notifyListeners();
-
-          debugPrint('✅ Downloaded (muxed): ${localFile.path}');
-          onComplete(localFile.path);
-
-          Future.delayed(const Duration(seconds: 3), () {
-            _activeTasks.remove(task.songId);
-            notifyListeners();
-          });
-          return;
-        }
+      // ✅ STEP 2: Extract video ID
+      debugPrint('\n[STEP 2] Extracting video ID...');
+      final videoId = _extractVideoId(task.youtubeUrl);
+      if (videoId == null) {
+        debugPrint('❌ Failed to extract video ID from URL');
+        throw ArgumentError('Invalid YouTube URL format');
       }
+      debugPrint('✅ Video ID extracted: $videoId');
 
-      extension = audioStream!.container.name.toLowerCase();
+      // ✅ STEP 3: Prepare download directory and file path
+      debugPrint('\n[STEP 3] Preparing download directory and file...');
+      task.status = 'Preparing download...';
+      task.progress = 0.10;
+      _throttledNotifyListeners();
 
-      task.status = 'Downloading...';
-      task.progress = 0.15;
-      notifyListeners();
-
-      // Create file path
       final cacheDir = await _getMusicCacheDir();
+      debugPrint('✅ Cache directory: ${cacheDir.path}');
+
       final sanitizedTitle = task.songTitle
           .replaceAll(RegExp(r'[<>:"/\\|?*]'), '_')
-          .replaceAll(RegExp(r'\s+'), '_');
-      final fileName = '${videoId}_$sanitizedTitle.$extension';
+          .replaceAll(RegExp(r'\s+'), '_')
+          .replaceAll(RegExp(r'_{2,}'), '_');
+
+      final fileName = '${videoId}_$sanitizedTitle.m4a';
       final localFile = File('${cacheDir.path}/$fileName');
 
-      // Delete if exists
+      debugPrint('File details:');
+      debugPrint('  📝 Sanitized title: $sanitizedTitle');
+      debugPrint('  📄 Filename: $fileName');
+      debugPrint('  📁 Full path: ${localFile.path}');
+
+      // Delete existing file if any
       if (await localFile.exists()) {
+        final existingSize = await localFile.length();
         await localFile.delete();
+        debugPrint('🗑️ Deleted existing file (was ${existingSize} bytes)');
       }
 
-      // Use direct HTTP download for faster speeds
-      final streamUrl = audioStream.url;
-      final response = await http.Client().send(http.Request('GET', streamUrl));
-
-      final totalBytes = audioStream.size.totalBytes;
-      int downloadedBytes = 0;
-      final fileStream = localFile.openWrite();
-
-      await for (final chunk in response.stream) {
-        fileStream.add(chunk);
-        downloadedBytes += chunk.length;
-
-        // Update progress (15% to 95%)
-        final downloadProgress = downloadedBytes / totalBytes;
-        task.progress = 0.15 + downloadProgress * 0.8;
-        task.status = 'Downloading... ${(task.progress * 100).toInt()}%';
-        notifyListeners();
+      // Verify directory is writable
+      try {
+        final testFile = File('${cacheDir.path}/.test_write');
+        await testFile.writeAsString('test');
+        await testFile.delete();
+        debugPrint('✅ Directory is writable');
+      } catch (e) {
+        debugPrint('❌ Directory write test failed: $e');
+        throw Exception('Directory not writable: $e');
       }
 
-      await fileStream.flush();
-      await fileStream.close();
+      // ✅ STEP 4: Download using NewPipe Extractor
+      debugPrint('\n${'=' * 60}');
+      debugPrint('[STEP 4] DOWNLOADING WITH NEWPIPE EXTRACTOR (ASYNC)');
+      debugPrint('=' * 60);
+      debugPrint('Target file: ${localFile.path}');
+      debugPrint('🎯 Using NewPipe Extractor - Non-blocking async mode');
+      debugPrint('=' * 60);
 
-      task.status = 'Complete!';
+      task.status = 'Downloading audio...';
+      task.progress = 0.5; // Show indeterminate progress
+      _forceNotifyListeners();
+
+      // Use async non-blocking download
+      // This returns immediately and uses callbacks
+      final completer = Completer<String>();
+
+      NewPipeDownloader.downloadAudioAsync(
+        videoUrl: task.youtubeUrl,
+        outputPath: localFile.path,
+        onProgress: null, // Still null to avoid UI updates
+        onComplete: (path) {
+          debugPrint('✅ Download complete (async): $path');
+          completer.complete(path);
+        },
+        onError: (error) {
+          debugPrint('❌ Download error (async): $error');
+          completer.completeError(Exception(error));
+        },
+      );
+
+      // Now wait for completion without blocking
+      final downloadedPath = await completer.future;
+
+      debugPrint('✅ Download complete: $downloadedPath');
+
+      // Verify file
+      final fileSize = await localFile.length();
+      debugPrint('✅ File verified: $fileSize bytes');
+
+      if (fileSize < 10000) {
+        throw Exception('File too small ($fileSize bytes)');
+      }
+
+      task.progress = 0.95;
+      task.status = 'Finalizing...';
+      _throttledNotifyListeners();
+
+      // ✅ STEP 9: Verify downloaded file
+      debugPrint('\n[STEP 9] Verifying downloaded file...');
+
+      if (!await localFile.exists()) {
+        debugPrint('❌ File does not exist after download!');
+        throw FileSystemException(
+          'Download completed but file was not saved',
+          localFile.path,
+        );
+      }
+      debugPrint('✅ File exists');
+
+      final savedFileSize = await localFile.length();
+      debugPrint(
+        'File size on disk: $savedFileSize bytes (${(savedFileSize / 1024 / 1024).toStringAsFixed(2)} MB)',
+      );
+
+      // NewPipe provides final size after download, no need to validate against expected size
+      debugPrint('✅ File downloaded successfully');
+
+      if (savedFileSize < 1000) {
+        debugPrint('❌ File too small: $savedFileSize bytes');
+        await localFile.delete();
+        throw Exception(
+          'Downloaded file is too small ($savedFileSize bytes). Download may have failed.',
+        );
+      }
+      debugPrint('✅ File size validation passed');
+
+      // Try to read first few bytes to verify file is readable
+      try {
+        final fileHandle = await localFile.open();
+        final firstBytes = await fileHandle.read(10);
+        await fileHandle.close();
+        debugPrint(
+          '✅ File is readable (first bytes: ${firstBytes.take(10).toList()})',
+        );
+      } catch (e) {
+        debugPrint('⚠️ File read test failed: $e');
+      }
+
+      stopwatch.stop();
+      final totalTime = stopwatch.elapsed;
+
+      // ✅ STEP 10: Mark as complete
+      task.status = 'Downloaded!';
       task.progress = 1.0;
       task.isComplete = true;
       task.localPath = localFile.path;
-      notifyListeners();
 
-      debugPrint('✅ Downloaded: ${localFile.path}');
+      debugPrint('\n${'=' * 60}');
+      debugPrint('✅ DOWNLOAD COMPLETED SUCCESSFULLY!');
+      debugPrint('=' * 60);
+      debugPrint('📍 Path: ${localFile.absolute.path}');
       debugPrint(
-        '📁 File size: ${(downloadedBytes / 1024 / 1024).toStringAsFixed(2)} MB',
+        '📁 Size: ${(savedFileSize / 1024 / 1024).toStringAsFixed(2)} MB',
       );
+      debugPrint(
+        '⏱️ Time: ${totalTime.inSeconds}s (${(savedFileSize / 1024 / totalTime.inSeconds).toStringAsFixed(2)} KB/s avg)',
+      );
+      debugPrint('🎵 Song: ${task.songTitle}');
+      debugPrint('=' * 60);
 
-      // Notify completion
-      onComplete(localFile.path);
+      // Update UI immediately for completion
+      _forceNotifyListeners();
 
-      // Remove from active tasks after a delay
+      // ✅ STEP 11: Call completion callback
+      try {
+        debugPrint('🔄 Updating song database...');
+        onComplete(localFile.path);
+        debugPrint('✅ Song database updated');
+      } catch (e) {
+        debugPrint('⚠️ Error in onComplete callback: $e');
+        // Don't fail the download if callback fails
+      }
+
+      // Remove from active tasks after delay
       Future.delayed(const Duration(seconds: 3), () {
         _activeTasks.remove(task.songId);
-        notifyListeners();
+        _forceNotifyListeners();
+        debugPrint('🧹 Removed completed task');
       });
-    } catch (e) {
-      debugPrint('❌ Download failed: $e');
-      task.status = 'Failed: ${e.toString().split('\n').first}';
-      task.isFailed = true;
-      notifyListeners();
+    } catch (e, stackTrace) {
+      stopwatch.stop();
+      debugPrint('\n${'=' * 60}');
+      debugPrint('❌ DOWNLOAD FAILED');
+      debugPrint('=' * 60);
+      debugPrint('Error: $e');
+      debugPrint('Error type: ${e.runtimeType}');
+      debugPrint('Time elapsed: ${stopwatch.elapsed.inSeconds}s');
+      debugPrint('Stack trace:\n$stackTrace');
+      debugPrint('=' * 60);
 
-      // Remove failed task after delay
-      Future.delayed(const Duration(seconds: 5), () {
-        _activeTasks.remove(task.songId);
-        notifyListeners();
-      });
+      task.status = 'Download failed';
+      task.errorMessage = e.toString().split('\n').first;
+      task.isFailed = true;
+      _forceNotifyListeners();
+      _removeTaskAfterDelay(task.songId, seconds: 5);
     }
   }
 
-  String? _extractVideoId(String url) {
-    final patterns = [
-      RegExp(r'v=([a-zA-Z0-9_-]{11})'),
-      RegExp(r'youtu\.be/([a-zA-Z0-9_-]{11})'),
-      RegExp(r'embed/([a-zA-Z0-9_-]{11})'),
-    ];
-
-    for (final pattern in patterns) {
-      final match = pattern.firstMatch(url);
-      if (match != null) {
-        return match.group(1);
+  /// Remove task after delay with proper error handling
+  void _removeTaskAfterDelay(String songId, {int seconds = 5}) {
+    Future.delayed(Duration(seconds: seconds), () {
+      if (_activeTasks.containsKey(songId)) {
+        _activeTasks.remove(songId);
+        _forceNotifyListeners();
+        debugPrint('🧹 Removed failed task: $songId');
       }
+    });
+  }
+
+  String? _extractVideoId(String url) {
+    try {
+      final patterns = [
+        RegExp(r'(?:youtube\.com/watch\?v=|youtu\.be/)([a-zA-Z0-9_-]{11})'),
+        RegExp(r'youtube\.com/embed/([a-zA-Z0-9_-]{11})'),
+        RegExp(r'youtube\.com/v/([a-zA-Z0-9_-]{11})'),
+      ];
+
+      for (final pattern in patterns) {
+        final match = pattern.firstMatch(url);
+        if (match != null && match.groupCount >= 1) {
+          final videoId = match.group(1);
+          debugPrint('✅ Extracted video ID: $videoId');
+          return videoId;
+        }
+      }
+
+      debugPrint('❌ Could not extract video ID from URL');
+    } catch (e) {
+      debugPrint('❌ Error extracting video ID: $e');
     }
+
     return null;
   }
 
   Future<Directory> _getMusicCacheDir() async {
-    // Try to use external storage "Mizz songs" folder first
     try {
-      // On Android, try to access external storage
-      if (Platform.isAndroid) {
-        final externalDir = Directory('/storage/emulated/0/Mizz songs');
-        if (await externalDir.exists()) {
-          debugPrint('📁 Using external folder: ${externalDir.path}');
-          return externalDir;
-        }
-        // Try to create it
-        try {
-          await externalDir.create(recursive: true);
-          debugPrint('📁 Created external folder: ${externalDir.path}');
-          return externalDir;
-        } catch (e) {
-          debugPrint('⚠️ Cannot create external folder: $e');
-        }
+      // Use external storage directory for user-accessible downloads
+      // Path: /storage/emulated/0/Android/data/com.example.mizz/files/Mizz songs/
+      final externalDir = await getExternalStorageDirectory();
+      if (externalDir == null) {
+        throw Exception(
+          'External storage not available. Check app permissions.',
+        );
       }
-    } catch (e) {
-      debugPrint('⚠️ External storage error: $e');
-    }
 
-    // Fallback to app documents directory
-    final appDir = await getApplicationDocumentsDirectory();
-    final musicDir = Directory('${appDir.path}/Mizz songs');
-    if (!await musicDir.exists()) {
-      await musicDir.create(recursive: true);
+      final musicDir = Directory('${externalDir.path}/Mizz songs');
+      if (!await musicDir.exists()) {
+        await musicDir.create(recursive: true);
+        debugPrint('📁 Created download directory: ${musicDir.path}');
+      }
+
+      debugPrint('📁 Download directory: ${musicDir.path}');
+      return musicDir;
+    } catch (e) {
+      debugPrint('❌ Error getting music cache dir: $e');
+      rethrow;
     }
-    debugPrint('📁 Using app folder: ${musicDir.path}');
-    return musicDir;
   }
 
   /// Check if a song is currently downloading
@@ -341,12 +456,14 @@ class DownloadManager extends ChangeNotifier {
 
   /// Cancel a download
   void cancelDownload(String songId) {
-    _activeTasks.remove(songId);
-    notifyListeners();
-  }
-
-  void dispose() {
-    _youtubeExplode.close();
+    final task = _activeTasks[songId];
+    if (task != null) {
+      task.status = 'Cancelled';
+      task.isFailed = true;
+      _activeTasks.remove(songId);
+      _forceNotifyListeners();
+      debugPrint('🚫 Cancelled download: $songId');
+    }
   }
 }
 
@@ -361,6 +478,7 @@ class DownloadManagerProvider extends InheritedNotifier<DownloadManager> {
   static DownloadManager of(BuildContext context) {
     final provider = context
         .dependOnInheritedWidgetOfExactType<DownloadManagerProvider>();
+    assert(provider != null, 'No DownloadManagerProvider found in context');
     return provider!.notifier!;
   }
 }

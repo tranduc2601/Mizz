@@ -1,6 +1,5 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'theme.dart';
 import 'theme_provider.dart';
 
 /// Animated Galaxy Cyberpunk Background

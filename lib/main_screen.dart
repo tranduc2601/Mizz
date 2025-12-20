@@ -10,20 +10,12 @@ import 'core/feature_registry.dart';
 import 'core/animated_background.dart';
 import 'core/settings/settings_screen.dart';
 import 'core/localization/app_localization.dart';
-import 'core/youtube_download_service.dart';
 import 'core/download_manager.dart';
 import 'features/user_profile/user_profile_view_enhanced.dart';
 import 'features/music_carousel/music_service.dart';
 import 'features/listening_history/listening_history_screen.dart';
 import 'features/library/song_list_screen.dart';
 
-/// Main Screen - The layout skeleton
-///
-/// This scaffold connects all the UI components:
-/// - AppBar with hamburger menu and user avatar
-/// - Body with the 3D carousel
-/// - Left Drawer (menu)
-/// - Right Drawer (user profile)
 class MainScreen extends StatelessWidget {
   const MainScreen({super.key});
 
@@ -143,7 +135,9 @@ class MainScreen extends StatelessWidget {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(4),
                   child: LinearProgressIndicator(
-                    value: task.progress,
+                    value: task.isComplete || task.isFailed
+                        ? 1.0
+                        : null, // Indeterminate during download
                     backgroundColor: colors.deepSpace.withOpacity(0.3),
                     valueColor: AlwaysStoppedAnimation<Color>(
                       task.isComplete
@@ -159,15 +153,27 @@ class MainScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          // Percentage
-          Text(
-            '${(task.progress * 100).toInt()}%',
-            style: TextStyle(
-              color: colors.accentCyan,
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
+          // Status text instead of percentage
+          if (task.isComplete || task.isFailed)
+            Text(
+              task.isComplete ? '✓' : '✗',
+              style: TextStyle(
+                color: task.isComplete
+                    ? colors.auroraGreen
+                    : colors.stardustPink,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            )
+          else
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(colors.accentCyan),
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -1002,9 +1008,8 @@ class MainScreen extends StatelessWidget {
 
                                 // Check if it's a YouTube link and offer to download
                                 if (sourceType == 'link' &&
-                                    YouTubeDownloadService().isYouTubeUrl(
-                                      songSource,
-                                    )) {
+                                    (songSource.contains('youtube.com') ||
+                                        songSource.contains('youtu.be'))) {
                                   // Show download dialog after dialog animation completes
                                   WidgetsBinding.instance.addPostFrameCallback((
                                     _,
@@ -1160,10 +1165,12 @@ class MainScreen extends StatelessWidget {
                                 localPath,
                               );
                               if (context.mounted) {
+                                ScaffoldMessenger.of(context).clearSnackBars();
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: Text('Downloaded: $songTitle'),
                                     backgroundColor: colors.auroraGreen,
+                                    duration: const Duration(seconds: 3),
                                   ),
                                 );
                               }
@@ -1171,12 +1178,17 @@ class MainScreen extends StatelessWidget {
                           );
 
                           Navigator.of(dialogContext).pop();
+
+                          // Clear any existing snackbars first
+                          ScaffoldMessenger.of(context).clearSnackBars();
+
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text(
                                 'Downloading in background: $songTitle',
                               ),
                               backgroundColor: colors.accentCyan,
+                              duration: const Duration(seconds: 2),
                             ),
                           );
                         },

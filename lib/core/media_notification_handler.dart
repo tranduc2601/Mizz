@@ -120,12 +120,16 @@ class MizzAudioHandler extends BaseAudioHandler with SeekHandler {
     Duration? duration,
   }) async {
     // Set media item first (for notification metadata)
+    final Uri? resolvedArtUri = (artworkUrl != null && artworkUrl.isNotEmpty)
+        ? await _resolveArtUri(artworkUrl)
+        : null;
+
     mediaItem.add(
       MediaItem(
         id: id,
         title: title,
         artist: artist,
-        artUri: artworkUrl != null ? await _resolveArtUri(artworkUrl) : null,
+        artUri: resolvedArtUri,
         duration: duration, // Will be updated when audio loads if null
         playable: true,
       ),
@@ -145,6 +149,14 @@ class MizzAudioHandler extends BaseAudioHandler with SeekHandler {
   /// Resolve artwork URI from various formats
   Future<Uri?> _resolveArtUri(String url) async {
     try {
+      // Extra defensive check
+      if (url.isEmpty) {
+        debugPrint('⚠️ Empty artwork URL');
+        return null;
+      }
+
+      debugPrint('🖼️ Resolving artwork: "$url"');
+
       if (url.startsWith('http://') || url.startsWith('https://')) {
         return Uri.parse(url);
       } else if (url.startsWith('file://')) {
@@ -152,6 +164,8 @@ class MizzAudioHandler extends BaseAudioHandler with SeekHandler {
       } else if (await File(url).exists()) {
         return Uri.file(url);
       }
+
+      debugPrint('⚠️ Artwork file not found: $url');
     } catch (e) {
       debugPrint('⚠️ Failed to resolve artwork: $e');
     }
@@ -167,13 +181,15 @@ class MizzAudioHandler extends BaseAudioHandler with SeekHandler {
     final current = mediaItem.value;
     if (current == null) return;
 
+    final Uri? updatedArtUri = (artworkUrl != null && artworkUrl.isNotEmpty)
+        ? await _resolveArtUri(artworkUrl)
+        : current.artUri;
+
     mediaItem.add(
       current.copyWith(
         title: title ?? current.title,
         artist: artist ?? current.artist,
-        artUri: artworkUrl != null
-            ? await _resolveArtUri(artworkUrl)
-            : current.artUri,
+        artUri: updatedArtUri,
       ),
     );
   }
